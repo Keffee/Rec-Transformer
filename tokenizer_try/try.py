@@ -18,3 +18,5 @@ print(encoded.tokens)  # 应该输出 ["1#", "2#", "3#", "1#"]
 print(encoded.ids)     # 应该输出 [0, 1, 2, 0]
 
 tokenizer.save("my_tokenizer.json")
+
+
