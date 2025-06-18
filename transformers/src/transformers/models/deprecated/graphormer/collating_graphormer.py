@@ -1,8 +1,7 @@
 # Copyright (c) Microsoft Corporation and HuggingFace
 # Licensed under the MIT License.
 
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, Dict, List, Mapping
 
 import numpy as np
 import torch
@@ -79,7 +78,7 @@ class GraphormerDataCollator:
         self.spatial_pos_max = spatial_pos_max
         self.on_the_fly_processing = on_the_fly_processing
 
-    def __call__(self, features: list[dict]) -> dict[str, Any]:
+    def __call__(self, features: List[dict]) -> Dict[str, Any]:
         if self.on_the_fly_processing:
             features = [preprocess_item(i) for i in features]
 

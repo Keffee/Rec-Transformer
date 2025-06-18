@@ -324,8 +324,10 @@ class IdeficsModelTester:
 
 
 @require_torch
-class IdeficsModelTest(ModelTesterMixin, PipelineTesterMixin, GenerationTesterMixin, unittest.TestCase):
+class IdeficsModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
     all_model_classes = (IdeficsModel, IdeficsForVisionText2Text) if is_torch_available() else ()
+    # Doesn't run generation tests here -- idefics has a dedicated tester for generation tests below
+    all_generative_model_classes = ()
     pipeline_model_mapping = (
         {"feature-extraction": IdeficsModel, "image-text-to-text": IdeficsForVisionText2Text}
         if is_torch_available()
@@ -334,7 +336,6 @@ class IdeficsModelTest(ModelTesterMixin, PipelineTesterMixin, GenerationTesterMi
     test_pruning = False
     test_headmasking = False
     test_torchscript = False
-    has_attentions = False  # only supports SDOA and thus no attention probs returned
 
     def _prepare_for_class(self, inputs_dict, model_class, return_labels=False):
         inputs_dict = super()._prepare_for_class(inputs_dict, model_class, return_labels=return_labels)
@@ -493,31 +494,6 @@ class IdeficsModelTest(ModelTesterMixin, PipelineTesterMixin, GenerationTesterMi
     def test_retain_grad_hidden_states_attentions(self):
         return
 
-    @pytest.mark.generate
-    @unittest.skip(reason="""IDEFICS cannot generate with no images provided!""")
-    def test_generate_without_input_ids(self):
-        pass
-
-    @pytest.mark.generate
-    @unittest.skip(reason="""IDEFICS cannot generate with no images provided!""")
-    def test_generate_continue_from_inputs_embeds(self):
-        pass
-
-    @pytest.mark.generate
-    @unittest.skip(reason="""IDEFICS cannot do contrastive generation yet and it is not worth fixing""")
-    def test_contrastive_generate(self):
-        pass
-
-    @pytest.mark.generate
-    @unittest.skip(reason="""IDEFICS cannot do contrastive generation yet and it is not worth fixing""")
-    def test_contrastive_generate_low_memory(self):
-        pass
-
-    @pytest.mark.generate
-    @unittest.skip(reason="""IDEFICS cannot do contrastive generation yet and it is not worth fixing""")
-    def test_contrastive_generate_dict_outputs_use_cache(self):
-        pass
-
     def test_attention_outputs(self):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.return_dict = True
@@ -526,8 +502,7 @@ class IdeficsModelTest(ModelTesterMixin, PipelineTesterMixin, GenerationTesterMi
             inputs_dict["output_attentions"] = True
             inputs_dict["output_hidden_states"] = False
             config.return_dict = True
-            model = model_class._from_config(config, attn_implementation="eager")
-            config = model.config
+            model = model_class(config)
             model.to(torch_device)
             model.eval()
             with torch.no_grad():

@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import tensorflow as tf
 from tensorflow_text import BertTokenizer as BertTokenizerLayer
@@ -58,7 +58,7 @@ class TFBertTokenizer(keras.layers.Layer):
 
     def __init__(
         self,
-        vocab_list: list,
+        vocab_list: List,
         do_lower_case: bool,
         cls_token_id: Optional[int] = None,
         sep_token_id: Optional[int] = None,

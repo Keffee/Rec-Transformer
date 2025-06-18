@@ -15,7 +15,7 @@
 """Fast Tokenization classes for Longformer."""
 
 import json
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from tokenizers import processors
 
@@ -227,7 +227,7 @@ class LongformerTokenizerFast(PreTrainedTokenizerFast):
 
         return super()._encode_plus(*args, **kwargs)
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> tuple[str]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         files = self._tokenizer.model.save(save_directory, name=filename_prefix)
         return tuple(files)
 
@@ -239,20 +239,20 @@ class LongformerTokenizerFast(PreTrainedTokenizerFast):
         return output + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
 
     def create_token_type_ids_from_sequences(
-        self, token_ids_0: list[int], token_ids_1: Optional[list[int]] = None
-    ) -> list[int]:
+        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
+    ) -> List[int]:
         """
         Create a mask from the two sequences passed to be used in a sequence-pair classification task. Longformer does not
         make use of token type ids, therefore a list of zeros is returned.
 
         Args:
-            token_ids_0 (`list[int]`):
+            token_ids_0 (`List[int]`):
                 List of IDs.
-            token_ids_1 (`list[int]`, *optional*):
+            token_ids_1 (`List[int]`, *optional*):
                 Optional second list of IDs for sequence pairs.
 
         Returns:
-            `list[int]`: List of zeros.
+            `List[int]`: List of zeros.
         """
         sep = [self.sep_token_id]
         cls = [self.cls_token_id]

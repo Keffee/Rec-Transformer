@@ -16,7 +16,7 @@
 
 import json
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 import regex
 
@@ -143,7 +143,7 @@ class FastSpeech2ConformerTokenizer(PreTrainedTokenizer):
         )
         return tokens
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> tuple[str]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         """
         Save the vocabulary and special tokens file to a directory.
 

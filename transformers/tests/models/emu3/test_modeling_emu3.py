@@ -326,7 +326,9 @@ class Emu3Vision2TextModelTest(ModelTesterMixin, GenerationTesterMixin, Pipeline
 
     def setUp(self):
         self.model_tester = Emu3Vision2TextModelTester(self)
-        self.config_tester = ConfigTester(self, config_class=Emu3Config, has_text_modality=False, hidden_size=37)
+        self.config_tester = ConfigTester(
+            self, config_class=Emu3Config, has_text_modality=False, common_properties=["vocabulary_map"]
+        )
 
     def test_config(self):
         self.config_tester.run_common_tests()
@@ -399,6 +401,10 @@ class Emu3Vision2TextModelTest(ModelTesterMixin, GenerationTesterMixin, Pipeline
     @pytest.mark.generate
     @unittest.skip("Emu3 has dynamic control flow in vision backbone")
     def test_generate_with_static_cache(self):
+        pass
+
+    @unittest.skip("Emu3 doesn't support Flex attn yet!")
+    def test_flex_attention_with_grads(self):
         pass
 
 
@@ -537,7 +543,7 @@ class Emu3IntegrationTest(unittest.TestCase):
         )
         self.assertTrue(out.shape[1] == 54)
 
-        image = model.decode_image_tokens(image_tokens=out[:, inputs.input_ids.shape[1] :], height=HEIGHT, width=WIDTH)
+        image = model.decode_image_tokens(out[:, inputs.input_ids.shape[1] :], height=HEIGHT, width=WIDTH)
         images = processor.postprocess(list(image.float()), return_tensors="np")
         self.assertTrue(images["pixel_values"].shape == (3, 40, 40))
         self.assertTrue(isinstance(images["pixel_values"], np.ndarray))
@@ -548,4 +554,4 @@ class Emu3IntegrationTest(unittest.TestCase):
             repo_type="dataset",
         )
         original_pixels = np.load(filepath)
-        self.assertTrue(np.allclose(original_pixels, images["pixel_values"], atol=1))
+        self.assertTrue(np.allclose(original_pixels, images["pixel_values"]))

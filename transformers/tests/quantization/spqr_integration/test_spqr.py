@@ -18,7 +18,6 @@ import unittest
 
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, SpQRConfig, StaticCache
 from transformers.testing_utils import (
-    backend_empty_cache,
     require_accelerate,
     require_spqr,
     require_torch_gpu,
@@ -83,6 +82,8 @@ class SpQRTest(unittest.TestCase):
     )
     EXPECTED_OUTPUT_COMPILE = "Hello my name is Jake and I am a 20 year old student at the University of North Texas. (Go Mean Green!) I am a huge fan of the Dallas"
 
+    device_map = "cuda"
+
     # called only once for all test in this class
     @classmethod
     def setUpClass(cls):
@@ -92,12 +93,12 @@ class SpQRTest(unittest.TestCase):
         cls.tokenizer = AutoTokenizer.from_pretrained(cls.model_name)
         cls.quantized_model = AutoModelForCausalLM.from_pretrained(
             cls.model_name,
-            device_map=torch_device,
+            device_map=cls.device_map,
         )
 
     def tearDown(self):
         gc.collect()
-        backend_empty_cache(torch_device)
+        torch.cuda.empty_cache()
         gc.collect()
 
     def test_quantized_model_conversion(self):
@@ -157,7 +158,7 @@ class SpQRTest(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.quantized_model.save_pretrained(tmpdirname)
-            model = AutoModelForCausalLM.from_pretrained(tmpdirname, device_map=torch_device)
+            model = AutoModelForCausalLM.from_pretrained(tmpdirname, device_map=self.device_map)
 
             input_ids = self.tokenizer(self.input_text, return_tensors="pt").to(torch_device)
 

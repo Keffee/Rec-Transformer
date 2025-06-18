@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import UserDict
-from typing import Any, Union
+from typing import Union
 
 import numpy as np
 import requests
@@ -67,17 +67,17 @@ class ZeroShotAudioClassificationPipeline(Pipeline):
             raise ValueError(f"The {self.__class__} is only available in PyTorch.")
         # No specific FOR_XXX available yet
 
-    def __call__(self, audios: Union[np.ndarray, bytes, str, dict], **kwargs: Any) -> list[dict[str, Any]]:
+    def __call__(self, audios: Union[np.ndarray, bytes, str], **kwargs):
         """
         Assign labels to the audio(s) passed as inputs.
 
         Args:
-            audios (`str`, `list[str]`, `np.array` or `list[np.array]`):
+            audios (`str`, `List[str]`, `np.array` or `List[np.array]`):
                 The pipeline handles three types of inputs:
                 - A string containing a http link pointing to an audio
                 - A string containing a local path to an audio
                 - An audio loaded in numpy
-            candidate_labels (`list[str]`):
+            candidate_labels (`List[str]`):
                 The candidate labels for this audio. They will be formatted using *hypothesis_template*.
             hypothesis_template (`str`, *optional*, defaults to `"This is a sound of {}"`):
                 The format used in conjunction with *candidate_labels* to attempt the audio classification by

@@ -530,7 +530,7 @@ def calculate_rouge(
         on multi sentence summaries (CNN/DM dataset).
 
     Returns:
-         dict[score: value] if aggregate else defaultdict(list) keyed by rouge_keys
+         Dict[score: value] if aggregate else defaultdict(list) keyed by rouge_keys
 
     """
     scorer = rouge_scorer.RougeScorer(rouge_keys, use_stemmer=use_stemmer)

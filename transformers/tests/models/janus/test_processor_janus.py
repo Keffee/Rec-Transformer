@@ -20,6 +20,7 @@ import unittest
 import numpy as np
 
 from transformers import AutoProcessor, AutoTokenizer, JanusProcessor
+from transformers.models.janus.convert_janus_weights_to_hf import CHAT_TEMPLATE
 from transformers.utils import is_vision_available
 
 from ...test_processing_common import ProcessorTesterMixin
@@ -44,9 +45,6 @@ class JanusProcessorTest(ProcessorTesterMixin, unittest.TestCase):
             "deepseek-community/Janus-Pro-1B",
             extra_special_tokens=special_image_tokens,
         )
-        # Set the processor to use the default system prompt to False as it's used based on input modality.
-        # Hence set to False to avoid any issues in the test irrespective of inputs.
-        processor.use_default_system_prompt = False
         processor.save_pretrained(self.tmpdirname)
 
     def get_tokenizer(self, **kwargs):
@@ -55,8 +53,11 @@ class JanusProcessorTest(ProcessorTesterMixin, unittest.TestCase):
     def get_image_processor(self, **kwargs):
         return AutoProcessor.from_pretrained(self.tmpdirname, **kwargs).image_processor
 
-    def get_processor(self):
-        return AutoProcessor.from_pretrained(self.tmpdirname)
+    def prepare_processor_dict(self):
+        # similar to Emu3 and Qwen2VLProcessorTest, but keep the template in the convert script to avoid duplicated code
+        return {
+            "chat_template": CHAT_TEMPLATE,
+        }
 
     def test_chat_template_single(self):
         """

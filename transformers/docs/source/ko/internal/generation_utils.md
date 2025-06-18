@@ -366,6 +366,11 @@ generation_output[:2]
 
 [[autodoc]] HQQQuantizedCache
 
+[[autodoc]] SinkCache
+    - update
+    - get_seq_length
+    - reorder_cache
+
 [[autodoc]] OffloadedCache
     - update
     - prefetch_layer

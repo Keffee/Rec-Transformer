@@ -14,9 +14,8 @@
 # limitations under the License.
 
 import copy
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Callable, Optional, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -49,6 +48,7 @@ from ..blip_2.modeling_blip_2 import Blip2VisionModel
 from ..chameleon.configuration_chameleon import ChameleonVQVAEConfig
 from ..chameleon.modeling_chameleon import (
     ChameleonVQVAE,
+    ChameleonVQVAEEncoder,
     ChameleonVQVAEEncoderAttnBlock,
     ChameleonVQVAEEncoderConvDownsample,
     ChameleonVQVAEEncoderResnetBlock,
@@ -201,7 +201,7 @@ class JanusVQVAEConfig(ChameleonVQVAEConfig):
             Number of out channels.
         base_channels (`int`, *optional*, defaults to 128):
             Base channel count.
-        channel_multiplier (`list[int]`, *optional*, defaults to `[1, 1, 2, 2, 4]`):
+        channel_multiplier (`List[int]`, *optional*, defaults to `[1, 1, 2, 2, 4]`):
             Channel multipliers for each resolution.
         num_res_blocks (`int`, *optional*, defaults to 2):
             Number of residual blocks.
@@ -230,7 +230,7 @@ class JanusVQVAEConfig(ChameleonVQVAEConfig):
         in_channels: int = 3,
         out_channels: int = 3,
         base_channels: int = 128,
-        channel_multiplier: list[int] = [1, 1, 2, 2, 4],
+        channel_multiplier: List[int] = [1, 1, 2, 2, 4],
         num_res_blocks: int = 2,
         dropout: float = 0.0,
         initializer_range=0.02,
@@ -379,7 +379,7 @@ class JanusPreTrainedModel(PreTrainedModel):
     config_class = JanusConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
-    _no_split_modules = ["LlamaDecoderLayer", "JanusVisionEncoderLayer"]
+    _no_split_modules = ["LlamaDecoderLayer"]
     _skip_keys_device_placement = ["past_key_values", "causal_mask"]
     _supports_flash_attn_2 = True
     _supports_sdpa = True
@@ -506,7 +506,13 @@ class JanusVisionAttention(nn.Module):
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
-            attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+            if self.config._attn_implementation == "sdpa" and kwargs.get("output_attentions", False):
+                logger.warning_once(
+                    "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
+                    'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
+                )
+            else:
+                attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
         attn_output, attn_weights = attention_interface(
             self,
@@ -655,9 +661,9 @@ class JanusVQVAEMidBlock(nn.Module):
         return hidden_states
 
 
-class JanusVQVAEEncoder(nn.Module):
+class JanusVQVAEEncoder(ChameleonVQVAEEncoder, nn.Module):
     def __init__(self, config):
-        super().__init__()
+        nn.Module.__init__()
 
         self.num_resolutions = len(config.channel_multiplier)
         self.num_res_blocks = config.num_res_blocks
@@ -840,12 +846,13 @@ class JanusVQVAE(ChameleonVQVAE):
     def forward(
         self,
         pixel_values: torch.FloatTensor,
-    ) -> tuple[torch.FloatTensor, torch.FloatTensor]:
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         batch_size = pixel_values.shape[0]
         quant, embedding_loss, indices = self.encode(pixel_values)
         decoded_pixel_values = self.decode(indices.view(batch_size, -1))
+        output = JanusVQVAEOutput(decoded_pixel_values, embedding_loss)
 
-        return JanusVQVAEOutput(decoded_pixel_values, embedding_loss)
+        return output
 
 
 class JanusVQVAEAlignerMLP(nn.Module):
@@ -970,7 +977,6 @@ class JanusModel(JanusPreTrainedModel):
             image_features = image_embeds.reshape(-1, embed_dim)
             image_attention_mask = image_attention_mask.unsqueeze(-1).expand(-1, -1, embed_dim)
 
-            image_attention_mask = image_attention_mask.to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(image_attention_mask, image_features)
 
@@ -987,13 +993,15 @@ class JanusModel(JanusPreTrainedModel):
             **kwargs,
         )
 
-        return JanusBaseModelOutputWithPast(
+        output = JanusBaseModelOutputWithPast(
             last_hidden_state=lm_output.last_hidden_state,
             past_key_values=lm_output.past_key_values,
             hidden_states=lm_output.hidden_states,
             attentions=lm_output.attentions,
             image_hidden_states=image_embeds if pixel_values is not None else None,
         )
+
+        return output
 
 
 class JanusForConditionalGeneration(JanusPreTrainedModel, GenerationMixin):
@@ -1083,7 +1091,7 @@ class JanusForConditionalGeneration(JanusPreTrainedModel, GenerationMixin):
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.text_config.vocab_size)
 
-        return JanusCausalLMOutputWithPast(
+        output = JanusCausalLMOutputWithPast(
             loss=loss,
             logits=logits,
             past_key_values=outputs.past_key_values,
@@ -1091,6 +1099,7 @@ class JanusForConditionalGeneration(JanusPreTrainedModel, GenerationMixin):
             attentions=outputs.attentions,
             image_hidden_states=outputs.image_hidden_states,
         )
+        return output
 
     def prepare_inputs_for_generation(
         self,
@@ -1353,11 +1362,11 @@ class JanusImageProcessor(BlipImageProcessor):
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image. Can be overridden by the `do_normalize` parameter in the `preprocess`
             method. Can be overridden by the `do_normalize` parameter in the `preprocess` method.
-        image_mean (`float` or `list[float]`, *optional*, defaults to `IMAGENET_STANDARD_MEAN`):
+        image_mean (`float` or `List[float]`, *optional*, defaults to `IMAGENET_STANDARD_MEAN`):
             Mean to use if normalizing the image. This is a float or list of floats the length of the number of
             channels in the image. Can be overridden by the `image_mean` parameter in the `preprocess` method. Can be
             overridden by the `image_mean` parameter in the `preprocess` method.
-        image_std (`float` or `list[float]`, *optional*, defaults to `IMAGENET_STANDARD_STD`):
+        image_std (`float` or `List[float]`, *optional*, defaults to `IMAGENET_STANDARD_STD`):
             Standard deviation to use if normalizing the image. This is a float or list of floats the length of the
             number of channels in the image. Can be overridden by the `image_std` parameter in the `preprocess` method.
             Can be overridden by the `image_std` parameter in the `preprocess` method.
@@ -1368,14 +1377,14 @@ class JanusImageProcessor(BlipImageProcessor):
     def __init__(
         self,
         do_resize: bool = True,
-        size: Optional[dict[str, int]] = None,
+        size: Optional[Dict[str, int]] = None,
         min_size: int = 14,
         resample: PILImageResampling = PILImageResampling.BICUBIC,
         do_rescale: bool = True,
         rescale_factor: Union[int, float] = 1 / 255,
         do_normalize: bool = True,
-        image_mean: Optional[Union[float, list[float]]] = None,
-        image_std: Optional[Union[float, list[float]]] = None,
+        image_mean: Optional[Union[float, List[float]]] = None,
+        image_std: Optional[Union[float, List[float]]] = None,
         do_convert_rgb: Optional[bool] = None,
         **kwargs,
     ):
@@ -1390,7 +1399,7 @@ class JanusImageProcessor(BlipImageProcessor):
     def pad_to_square(
         self,
         image: np.ndarray,
-        background_color: Union[int, tuple[int, int, int]] = 0,
+        background_color: Union[int, Tuple[int, int, int]] = 0,
         data_format: Optional[Union[str, ChannelDimension]] = None,
         input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.array:
@@ -1400,7 +1409,7 @@ class JanusImageProcessor(BlipImageProcessor):
         Args:
             image (`np.ndarray`):
                 The image to pad.
-            background_color (`int` or `tuple[int, int, int]`, *optional*, defaults to 0):
+            background_color (`int` or `Tuple[int, int, int]`, *optional*, defaults to 0):
                 The color to use for the padding. Can be an integer for single channel or a
                 tuple of integers representing for multi-channel images. If passed as integer
                 in mutli-channel mode, it will default to `0` in subsequent channels.
@@ -1464,7 +1473,7 @@ class JanusImageProcessor(BlipImageProcessor):
     def resize(
         self,
         image: np.ndarray,
-        size: Union[dict[str, int], int],
+        size: Union[Dict[str, int], int],
         resample: PILImageResampling = PILImageResampling.BICUBIC,
         data_format: Optional[Union[str, ChannelDimension]] = None,
         input_data_format: Optional[Union[str, ChannelDimension]] = None,
@@ -1536,8 +1545,8 @@ class JanusImageProcessor(BlipImageProcessor):
         do_rescale: Optional[bool] = None,
         rescale_factor: Optional[float] = None,
         do_normalize: Optional[bool] = None,
-        image_mean: Optional[list[float]] = None,
-        image_std: Optional[list[float]] = None,
+        image_mean: Optional[List[float]] = None,
+        image_std: Optional[List[float]] = None,
         input_data_format: Optional[str] = None,
         return_tensors: Optional[str] = None,
     ):

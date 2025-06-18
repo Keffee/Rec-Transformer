@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+from typing import List, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -41,7 +42,7 @@ TF_LOGITS_PROCESSOR_INPUTS_DOCSTRING = r"""
         cur_len (`int`):
             The current length of valid input sequence tokens. In the TF implementation, the input_ids' sequence length
             is the maximum length generate can produce, and we need to know which of its tokens are valid.
-        kwargs (`dict[str, Any]`, *optional*):
+        kwargs (`Dict[str, Any]`, *optional*):
             Additional logits processor specific kwargs.
 
     Return:
@@ -241,7 +242,7 @@ class TFRepetitionPenaltyLogitsProcessor(TFLogitsProcessor):
     Args:
         repetition_penalty (`float`):
             The parameter for repetition penalty. 1.0 means no penalty. See [this
-            paper](https://huggingface.co/papers/1909.05858) for more details.
+            paper](https://arxiv.org/pdf/1909.05858.pdf) for more details.
     """
 
     def __init__(self, penalty: float):
@@ -289,7 +290,7 @@ class TFNoBadWordsLogitsProcessor(TFLogitsProcessor):
     [`TFLogitsProcessor`] that enforces that specified sequences will never be sampled.
 
     Args:
-        bad_words_ids (`list[list[int]]`):
+        bad_words_ids (`List[List[int]]`):
             List of list of token ids that are not allowed to be generated. In order to get the tokens of the words
             that should not appear in the generated text, make sure to set `add_prefix_space=True` when initializing
             the tokenizer, and use `tokenizer(bad_words, add_special_tokens=False).input_ids`. The `add_prefix_space`
@@ -299,8 +300,8 @@ class TFNoBadWordsLogitsProcessor(TFLogitsProcessor):
             The id of the *end-of-sequence* token.
     """
 
-    def __init__(self, bad_words_ids: list[list[int]], eos_token_id: int):
-        if not isinstance(bad_words_ids, list) or len(bad_words_ids) == 0:
+    def __init__(self, bad_words_ids: List[List[int]], eos_token_id: int):
+        if not isinstance(bad_words_ids, List) or len(bad_words_ids) == 0:
             raise ValueError(f"`bad_words_ids` has to be a non-empty list, but is {bad_words_ids}.")
         if any(not isinstance(bad_word_ids, list) for bad_word_ids in bad_words_ids):
             raise ValueError(f"`bad_words_ids` has to be a list of lists, but is {bad_words_ids}.")
@@ -369,7 +370,7 @@ class TFNoBadWordsLogitsProcessor(TFLogitsProcessor):
         # To remain simple and XLA-compatible, we work on a per-row fashion.
         # TODO (Joao): this function might trigger XLA retracing as `cur_len` increases. Fix it if it becomes
         # a frequent choke point. (make `cur_len` a tensor?)
-        def _get_row_updated_score(row_inputs: tuple[tf.Tensor]) -> tf.Tensor:
+        def _get_row_updated_score(row_inputs: Tuple[tf.Tensor]) -> tf.Tensor:
             row_input_ids, row_score = row_inputs
             banned_tokens = self._calc_row_banned_bad_tokens(row_input_ids[:cur_len])
             banned_tokens_mask = tf.scatter_nd(
@@ -564,7 +565,7 @@ class TFForceTokensLogitsProcessor(TFLogitsProcessor):
     indices that will be forced before sampling. The processor will set their log probs to `0` and all other tokens to
     `-inf` so that they are sampled at their corresponding index."""
 
-    def __init__(self, force_token_map: list[list[int]]):
+    def __init__(self, force_token_map: List[List[int]]):
         force_token_map = dict(force_token_map)
         # Converts the dictionary of format {index: token} containing the tokens to be forced to an array, where the
         # index of the array corresponds to the index of the token to be forced, for XLA compatibility.

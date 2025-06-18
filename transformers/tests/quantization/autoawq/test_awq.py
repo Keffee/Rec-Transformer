@@ -19,7 +19,6 @@ import unittest
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, AwqConfig, OPTForCausalLM
 from transformers.testing_utils import (
     backend_empty_cache,
-    get_device_properties,
     require_accelerate,
     require_auto_awq,
     require_flash_attn,
@@ -62,10 +61,12 @@ class AwqConfigTest(unittest.TestCase):
 
         # Only cuda and xpu devices can run this function
         support_llm_awq = False
-        device_type, major, _ = get_device_properties()
-        if device_type == "cuda" and major >= 8:
-            support_llm_awq = True
-        elif device_type == "xpu":
+        if torch.cuda.is_available():
+            compute_capability = torch.cuda.get_device_capability()
+            major, minor = compute_capability
+            if major >= 8:
+                support_llm_awq = True
+        elif torch.xpu.is_available():
             support_llm_awq = True
 
         if support_llm_awq:
@@ -328,6 +329,7 @@ class AwqFusedTest(unittest.TestCase):
         model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             quantization_config=quantization_config,
+            low_cpu_mem_usage=True,
             revision=self.model_revision,
         ).to(torch_device)
 
@@ -346,6 +348,7 @@ class AwqFusedTest(unittest.TestCase):
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             quantization_config=quantization_config,
+            low_cpu_mem_usage=True,
         ).to(torch_device)
 
         # Check if model has been correctly fused
@@ -354,7 +357,7 @@ class AwqFusedTest(unittest.TestCase):
         self.assertTrue(isinstance(model.model.layers[0].block_sparse_moe.gate, torch.nn.Linear))
 
     @unittest.skipIf(
-        get_device_properties()[0] == "cuda" and get_device_properties()[1] < 8,
+        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8,
         "Skipping because RuntimeError: FlashAttention only supports Ampere GPUs or newer, so not supported on GPU with capability < 8.0",
     )
     @require_flash_attn
@@ -368,6 +371,7 @@ class AwqFusedTest(unittest.TestCase):
         model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             quantization_config=quantization_config,
+            low_cpu_mem_usage=True,
             revision=self.model_revision,
         ).to(torch_device)
 
@@ -384,7 +388,7 @@ class AwqFusedTest(unittest.TestCase):
     @require_flash_attn
     @require_torch_gpu
     @unittest.skipIf(
-        get_device_properties()[0] == "cuda" and get_device_properties()[1] < 8,
+        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8,
         "Skipping because RuntimeError: FlashAttention only supports Ampere GPUs or newer, so not supported on GPU with capability < 8.0",
     )
     def test_generation_fused_batched(self):
@@ -396,6 +400,7 @@ class AwqFusedTest(unittest.TestCase):
         model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             quantization_config=quantization_config,
+            low_cpu_mem_usage=True,
             revision=self.model_revision,
         ).to(torch_device)
 
@@ -436,7 +441,7 @@ class AwqFusedTest(unittest.TestCase):
     @require_flash_attn
     @require_torch_multi_gpu
     @unittest.skipIf(
-        get_device_properties()[0] == "cuda" and get_device_properties()[1] < 8,
+        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8,
         "Skipping because RuntimeError: FlashAttention only supports Ampere GPUs or newer, so not supported on GPU with capability < 8.0",
     )
     def test_generation_custom_model(self):

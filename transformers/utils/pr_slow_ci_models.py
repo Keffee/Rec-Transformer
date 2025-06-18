@@ -31,6 +31,7 @@ import os.path
 import re
 import string
 from pathlib import Path
+from typing import List
 
 from git import Repo
 
@@ -38,7 +39,7 @@ from git import Repo
 PATH_TO_REPO = Path(__file__).parent.parent.resolve()
 
 
-def get_new_python_files_between_commits(base_commit: str, commits: list[str]) -> list[str]:
+def get_new_python_files_between_commits(base_commit: str, commits: List[str]) -> List[str]:
     """
     Get the list of added python files between a base commit and one or several commits.
 
@@ -63,7 +64,7 @@ def get_new_python_files_between_commits(base_commit: str, commits: list[str]) -
     return code_diff
 
 
-def get_new_python_files(diff_with_last_commit=False) -> list[str]:
+def get_new_python_files(diff_with_last_commit=False) -> List[str]:
     """
     Return a list of python files that have been added between the current head and the main branch.
 

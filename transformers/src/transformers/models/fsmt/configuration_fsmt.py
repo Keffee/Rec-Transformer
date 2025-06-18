@@ -28,11 +28,10 @@ class DecoderConfig(PretrainedConfig):
 
     model_type = "fsmt_decoder"
 
-    def __init__(self, vocab_size=0, bos_token_id=0, is_encoder_decoder=True):
+    def __init__(self, vocab_size=0, bos_token_id=0):
         super().__init__()
         self.vocab_size = vocab_size
         self.bos_token_id = bos_token_id
-        self.is_encoder_decoder = is_encoder_decoder
 
 
 class FSMTConfig(PretrainedConfig):
@@ -46,7 +45,7 @@ class FSMTConfig(PretrainedConfig):
     documentation from [`PretrainedConfig`] for more information.
 
     Args:
-        langs (`list[str]`):
+        langs (`List[str]`):
             A list with source language and target_language (e.g., ['en', 'ru']).
         src_vocab_size (`int`):
             Vocabulary size of the encoder. Defines the number of different tokens that can be represented by the
@@ -188,9 +187,7 @@ class FSMTConfig(PretrainedConfig):
         self.init_std = init_std  # Normal(0, this parameter)
         self.activation_function = activation_function
 
-        self.decoder = DecoderConfig(
-            vocab_size=tgt_vocab_size, bos_token_id=eos_token_id, is_encoder_decoder=is_encoder_decoder
-        )
+        self.decoder = DecoderConfig(vocab_size=tgt_vocab_size, bos_token_id=eos_token_id)
         if "decoder" in common_kwargs:
             del common_kwargs["decoder"]
 

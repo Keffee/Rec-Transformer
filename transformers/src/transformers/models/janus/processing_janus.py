@@ -16,12 +16,15 @@
 Processor class for Janus.
 """
 
-from typing import Union
+from typing import List, Union
 
 from ...feature_extraction_utils import BatchFeature
 from ...image_utils import ImageInput
 from ...processing_utils import ProcessingKwargs, ProcessorMixin, TextKwargs, Unpack
-from ...tokenization_utils_base import PreTokenizedInput, TextInput
+from ...tokenization_utils_base import (
+    PreTokenizedInput,
+    TextInput,
+)
 from ...utils import logging
 
 
@@ -65,6 +68,7 @@ class JanusProcessor(ProcessorMixin):
     """
 
     attributes = ["image_processor", "tokenizer"]
+    valid_kwargs = ["chat_template", "use_default_system_prompt"]
     image_processor_class = "JanusImageProcessor"
     tokenizer_class = "LlamaTokenizerFast"
 
@@ -79,7 +83,7 @@ class JanusProcessor(ProcessorMixin):
 
     def __call__(
         self,
-        text: Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]] = None,
+        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
         images: ImageInput = None,
         videos=None,
         audio=None,
@@ -93,11 +97,11 @@ class JanusProcessor(ProcessorMixin):
         of the above two methods for more information.
 
         Args:
-            text (`str`, `list[str]`, `list[list[str]]`):
+            text (`str`, `List[str]`, `List[List[str]]`):
                 The sequence or batch of sequences to be encoded. Each sequence can be a string or a list of strings
                 (pretokenized string). If the sequences are provided as list of strings (pretokenized), you must set
                 `is_split_into_words=True` (to lift the ambiguity with a batch of sequences).
-            images (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `list[PIL.Image.Image]`, `list[np.ndarray]`, `list[torch.Tensor]`):
+            images (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[torch.Tensor]`):
                 The image or batch of images to be prepared. Each image can be a PIL image, NumPy array or PyTorch
                 tensor. Both channels-first and channels-last formats are supported.
             return_tensors (`str` or [`~utils.TensorType`], *optional*):

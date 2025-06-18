@@ -17,7 +17,7 @@
 """PyTorch PVTv2 model."""
 
 import math
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
@@ -169,7 +169,7 @@ class PvtV2SelfAttention(nn.Module):
         height: int,
         width: int,
         output_attentions: bool = False,
-    ) -> tuple[torch.Tensor]:
+    ) -> Tuple[torch.Tensor]:
         batch_size, seq_len, num_channels = hidden_states.shape
         query_layer = self.transpose_for_scores(self.query(hidden_states))
 
@@ -360,7 +360,7 @@ class PvtV2Encoder(nn.Module):
         output_attentions: Optional[bool] = False,
         output_hidden_states: Optional[bool] = False,
         return_dict: Optional[bool] = True,
-    ) -> Union[tuple, BaseModelOutput]:
+    ) -> Union[Tuple, BaseModelOutput]:
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
 
@@ -441,7 +441,7 @@ class PvtV2Model(PvtV2PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[tuple, BaseModelOutput]:
+    ) -> Union[Tuple, BaseModelOutput]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states

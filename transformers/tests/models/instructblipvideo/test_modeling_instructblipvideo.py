@@ -744,8 +744,7 @@ class InstructBlipVideoModelIntegrationTest(unittest.TestCase):
     def test_inference_vicuna_7b(self):
         processor = InstructBlipVideoProcessor.from_pretrained("Salesforce/instructblip-vicuna-7b")
         model = InstructBlipVideoForConditionalGeneration.from_pretrained(
-            "Salesforce/instructblip-vicuna-7b",
-            load_in_8bit=True,
+            "Salesforce/instructblip-vicuna-7b", load_in_8bit=True, low_cpu_mem_usage=True
         )
 
         clip = prepare_video()
@@ -763,8 +762,7 @@ class InstructBlipVideoModelIntegrationTest(unittest.TestCase):
     def test_expansion_in_processing(self):
         processor = InstructBlipVideoProcessor.from_pretrained("Salesforce/instructblip-vicuna-7b")
         model = InstructBlipVideoForConditionalGeneration.from_pretrained(
-            "Salesforce/instructblip-vicuna-7b",
-            load_in_8bit=True,
+            "Salesforce/instructblip-vicuna-7b", load_in_8bit=True, low_cpu_mem_usage=True
         )
 
         clip = prepare_video()

@@ -15,7 +15,7 @@
 """TensorFlow SwiftFormer model."""
 
 import collections.abc
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import tensorflow as tf
 
@@ -656,7 +656,7 @@ class TFSwiftFormerMainLayer(keras.layers.Layer):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         training: bool = False,
-    ) -> Union[tuple, TFBaseModelOutputWithNoAttention]:
+    ) -> Union[Tuple, TFBaseModelOutputWithNoAttention]:
         r""" """
 
         output_hidden_states = (
@@ -718,7 +718,7 @@ class TFSwiftFormerModel(TFSwiftFormerPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         training: bool = False,
-    ) -> Union[TFBaseModelOutputWithNoAttention, tuple[tf.Tensor]]:
+    ) -> Union[TFBaseModelOutputWithNoAttention, Tuple[tf.Tensor]]:
         outputs = self.swiftformer(
             pixel_values=pixel_values,
             output_hidden_states=output_hidden_states,

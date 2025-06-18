@@ -17,7 +17,7 @@ Processor class for InstructBLIP. Largely copy of Blip2Processor with addition o
 """
 
 import os
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from ...image_processing_utils import BatchFeature
 from ...processing_utils import ProcessorMixin
@@ -57,6 +57,7 @@ class InstructBlipVideoProcessor(ProcessorMixin):
     """
 
     attributes = ["video_processor", "tokenizer", "qformer_tokenizer"]
+    valid_kwargs = ["num_query_tokens"]
     video_processor_class = "AutoVideoProcessor"
     tokenizer_class = "AutoTokenizer"
     qformer_tokenizer_class = "AutoTokenizer"
@@ -73,7 +74,7 @@ class InstructBlipVideoProcessor(ProcessorMixin):
     def __call__(
         self,
         images: VideoInput = None,
-        text: Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]] = None,
+        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
         add_special_tokens: bool = True,
         padding: Union[bool, str, PaddingStrategy] = False,
         truncation: Union[bool, str, TruncationStrategy] = None,

@@ -14,7 +14,7 @@
 # limitations under the License.
 """T5 model configuration"""
 
-from collections.abc import Mapping
+from typing import Mapping
 
 from ...configuration_utils import PretrainedConfig
 from ...onnx import OnnxSeq2SeqConfigWithPast

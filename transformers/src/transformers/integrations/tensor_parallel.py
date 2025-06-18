@@ -16,15 +16,15 @@ from __future__ import annotations
 import operator
 import os
 import re
+from collections.abc import MutableMapping
 from functools import partial, reduce
-from typing import Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
 from torch import nn
 
 from ..utils import is_torch_greater_or_equal, logging
-from ..utils.generic import GeneralInterface
 
 
 ALL_LAYERNORM_LAYERS = [nn.LayerNorm]
@@ -48,7 +48,7 @@ def initialize_tensor_parallelism(tp_plan, tp_size=None):
         return None, None, None
 
     if not is_torch_greater_or_equal("2.5"):
-        raise OSError("Tensor parallel is only supported for `torch>=2.5`.")
+        raise EnvironmentError("Tensor parallel is only supported for `torch>=2.5`.")
 
     # Detect the accelerator on the machine. If no accelerator is available, it returns CPU.
     device_type = torch._C._get_accelerator().type
@@ -70,7 +70,7 @@ def initialize_tensor_parallelism(tp_plan, tp_size=None):
                 current_device.set_device(local_rank)
 
         except Exception as e:
-            raise OSError(
+            raise EnvironmentError(
                 "We tried to initialize torch.distributed for you, but it failed. Make "
                 "sure you init torch distributed in your script to use `tp_plan='auto'`."
             ) from e
@@ -93,7 +93,7 @@ def initialize_tensor_parallelism(tp_plan, tp_size=None):
     return tp_device, device_map, device_mesh
 
 
-def _blocks_to_block_sizes(total_size: int, blocks: Union[int, list[int]]) -> list[int]:
+def _blocks_to_block_sizes(total_size: int, blocks: Union[int, List[int]]) -> List[int]:
     """
     Convert block count or proportions to block sizes.
 
@@ -101,7 +101,7 @@ def _blocks_to_block_sizes(total_size: int, blocks: Union[int, list[int]]) -> li
 
     - The number of blocks (int), in which case the block size is
       total_size//blocks; or
-    - A list of block sizes (list[int]).
+    - A list of block sizes (List[int]).
 
     In the second case, if sum(blocks) < total_size, the ratios between
     the block sizes will be preserved. For instance, if blocks is
@@ -608,7 +608,7 @@ class RowwiseParallel(TensorParallelLayer):
         if self.use_dtensor:
             if isinstance(module, nn.Linear):
                 # rowwise linear runtime sharding requires input tensor shard on last dim
-                self.desired_input_layouts: tuple[Placement, ...] = (Shard(-1),)
+                self.desired_input_layouts: Tuple[Placement, ...] = (Shard(-1),)
             elif isinstance(module, nn.Embedding):
                 # rowwise embedding runtime sharding requires input tensor replicated
                 self.desired_input_layouts = (Replicate(),)
@@ -647,7 +647,7 @@ class SequenceParallel(TensorParallelLayer):
     `RMSNorm python implementation <https://github.com/facebookresearch/llama/blob/main/llama/model.py#L34>`__
 
     This style implements the operation that is described in the paper
-    `Reducing Activation Recomputation in Large Transformer Models <https://huggingface.co/papers/2205.05198>`__
+    `Reducing Activation Recomputation in Large Transformer Models <https://arxiv.org/abs/2205.05198>`__
 
     If the input passed in to this ``nn.Module`` is a :class:`torch.Tensor`, it assumes that the input is already sharded
     on the sequence dimension and converts the input to a :class:`DTensor` sharded on the sequence dimension. If the input
@@ -724,11 +724,20 @@ class SequenceParallel(TensorParallelLayer):
         return nn.Parameter(parameter, requires_grad=parameter.is_floating_point())
 
 
-class ParallelInterface(GeneralInterface):
+class ParallelInterface(MutableMapping):
+    """
+    Dict-like object keeping track of allowed attention functions. You can easily add a new attention function
+    with a call to `register()`. If a model needs to locally overwrite an existing attention function, say `sdpa`,
+    it needs to declare a new instance of this class inside the `modeling_<model>.py`, and declare it on that instance.
+    """
+
     # Class instance object, so that a call to `register` can be reflected into all other files correctly, even if
-    # a new instance is created (in order to locally override a given entry)
-    _global_mapping = (
-        {
+    # a new instance is created (in order to locally override a given function)
+
+    def __init__(self):
+        self._local_mapping = {}
+
+        ParallelInterface._global_mapping = {
             "colwise": ColwiseParallel(),
             "rowwise": RowwiseParallel(),
             "colwise_rep": ColwiseParallel(output_layouts=Replicate()),
@@ -741,12 +750,41 @@ class ParallelInterface(GeneralInterface):
             "sequence_parallel": SequenceParallel(),
             "replicate": ReplicateParallel(),
         }
-        if is_torch_greater_or_equal("2.5") and _torch_distributed_available
-        else {}
-    )
+
+    def __getitem__(self, key):
+        # First check if instance has a local override
+        if key in self._local_mapping:
+            return self._local_mapping[key]
+        return self._global_mapping[key]
+
+    def __setitem__(self, key, value):
+        # Allow local update of the default functions without impacting other instances
+        self._local_mapping.update({key: value})
+
+    def __delitem__(self, key):
+        del self._local_mapping[key]
+
+    def __iter__(self):
+        # Ensure we use all keys, with the overwritten ones on top
+        return iter({**self._global_mapping, **self._local_mapping})
+
+    def __len__(self):
+        return len(self._global_mapping.keys() | self._local_mapping.keys())
+
+    @classmethod
+    def register(cls, key: str, value: Callable):
+        cls._global_mapping.update({key: value})
+
+    def valid_keys(self) -> List[str]:
+        return list(self.keys())
 
 
-ALL_PARALLEL_STYLES: ParallelInterface = ParallelInterface()
+# Global AttentionInterface shared by all models which do not need to overwrite any of the existing ones
+
+if is_torch_greater_or_equal("2.5") and _torch_distributed_available:
+    ALL_PARALLEL_STYLES: ParallelInterface = ParallelInterface()
+else:
+    ALL_PARALLEL_STYLES = None
 
 
 def convert_local_tensor_to_dtensor(
@@ -900,7 +938,7 @@ def verify_tp_plan(expected_keys: list[str], tp_plan: Optional[dict[str, str]]):
     unused_rules = tp_plan
 
     for key in generic_keys:
-        param_name = key.rsplit(".", 1)[0] if "." in key else key
+        param_name, _ = key.rsplit(".", 1) if "." in key else key
         generic_param_name = re.sub(r"\d+", "*", param_name)
 
         if generic_param_name in tp_plan:

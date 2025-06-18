@@ -304,8 +304,7 @@ class PegasusXModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterM
             inputs_dict["output_attentions"] = True
             inputs_dict["output_hidden_states"] = False
             config.return_dict = True
-            model = model_class._from_config(config, attn_implementation="eager")
-            config = model.config
+            model = model_class(config)
             model.to(torch_device)
             model.eval()
             with torch.no_grad():
@@ -591,7 +590,7 @@ class PegasusXModelIntegrationTests(unittest.TestCase):
         self.assertEqual(output.shape, expected_shape)
         # change to expected output here
         expected_slice = torch.tensor(
-            [[[0.0702, -0.1552, 0.1192], [0.0836, -0.1848, 0.1304], [0.0673, -0.1686, 0.1045]]], device=torch_device
+            [[0.0702, -0.1552, 0.1192], [0.0836, -0.1848, 0.1304], [0.0673, -0.1686, 0.1045]], device=torch_device
         )
 
         torch.testing.assert_close(output[:, :3, :3], expected_slice, rtol=TOLERANCE, atol=TOLERANCE)
@@ -609,8 +608,7 @@ class PegasusXModelIntegrationTests(unittest.TestCase):
         self.assertEqual(output.shape, expected_shape)
         # change to expected output here
         expected_slice = torch.tensor(
-            [[[0.0, 9.5705185, 1.5897303], [0.0, 9.833374, 1.5828674], [0.0, 10.429961, 1.5643371]]],
-            device=torch_device,
+            [[0.0, 9.5705185, 1.5897303], [0.0, 9.833374, 1.5828674], [0.0, 10.429961, 1.5643371]], device=torch_device
         )
         torch.testing.assert_close(output[:, :3, :3], expected_slice, rtol=TOLERANCE, atol=TOLERANCE)
 
@@ -637,7 +635,8 @@ class PegasusXModelIntegrationTests(unittest.TestCase):
             batch_input,
             max_length=512,
             padding="max_length",
-            truncation="only_first",
+            truncation_strategy="only_first",
+            truncation=True,
             return_tensors="pt",
         )
 
@@ -872,8 +871,4 @@ class PegasusXStandaloneDecoderModelTest(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skip(reason="Decoder cannot keep gradients")
     def test_retain_grad_hidden_states_attentions(self):
-        return
-
-    @unittest.skip(reason="Decoder cannot keep gradients")
-    def test_flex_attention_with_grads():
         return

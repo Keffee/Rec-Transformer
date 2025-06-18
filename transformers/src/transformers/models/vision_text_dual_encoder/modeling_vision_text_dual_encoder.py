@@ -14,7 +14,7 @@
 # limitations under the License.
 """PyTorch VisionTextDualEncoder model."""
 
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -196,7 +196,7 @@ class VisionTextDualEncoderModel(PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[tuple[torch.Tensor], CLIPOutput]:
+    ) -> Union[Tuple[torch.Tensor], CLIPOutput]:
         r"""
         return_loss (`bool`, *optional*):
             Whether or not to return the contrastive loss.

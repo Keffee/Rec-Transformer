@@ -26,7 +26,6 @@ from transformers import (
 )
 from transformers.pipelines import MaskGenerationPipeline
 from transformers.testing_utils import (
-    Expectations,
     is_pipeline_test,
     nested_simplify,
     require_tf,
@@ -121,11 +120,6 @@ class MaskGenerationPipelineTests(unittest.TestCase):
             new_outupt += [{"mask": mask_to_test_readable(o), "scores": outputs["scores"][i]}]
 
         # fmt: off
-        last_output = Expectations({
-            ("cuda", None): {'mask': {'hash': 'b5f47c9191', 'shape': (480, 640)}, 'scores': 0.8871},
-            ("rocm", (9, 5)): {'mask': {'hash': 'b5f47c9191', 'shape': (480, 640)}, 'scores': 0.8872}
-        }).get_expectation()
-
         self.assertEqual(
             nested_simplify(new_outupt, decimals=4),
             [
@@ -158,7 +152,7 @@ class MaskGenerationPipelineTests(unittest.TestCase):
                 {'mask': {'hash': '7b9e8ddb73', 'shape': (480, 640)}, 'scores': 0.8986},
                 {'mask': {'hash': 'cd24047c8a', 'shape': (480, 640)}, 'scores': 0.8984},
                 {'mask': {'hash': '6943e6bcbd', 'shape': (480, 640)}, 'scores': 0.8873},
-                last_output
+                {'mask': {'hash': 'b5f47c9191', 'shape': (480, 640)}, 'scores': 0.8871}
             ],
         )
         # fmt: on

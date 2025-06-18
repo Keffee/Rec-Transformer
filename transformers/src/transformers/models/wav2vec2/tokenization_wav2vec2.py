@@ -19,7 +19,7 @@ import os
 import warnings
 from dataclasses import dataclass
 from itertools import groupby
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -87,7 +87,7 @@ WAV2VEC2_KWARGS_DOCSTRING = r"""
                 Whether or not to print more information and warnings.
 """
 
-ListOfDict = list[dict[str, Union[int, str]]]
+ListOfDict = List[Dict[str, Union[int, str]]]
 
 
 @dataclass
@@ -98,18 +98,18 @@ class Wav2Vec2CTCTokenizerOutput(ModelOutput):
     Args:
         text (list of `str` or `str`):
             Decoded logits in text from. Usually the speech transcription.
-        char_offsets (list of `list[dict[str, Union[int, str]]]` or `list[dict[str, Union[int, str]]]`):
+        char_offsets (list of `List[Dict[str, Union[int, str]]]` or `List[Dict[str, Union[int, str]]]`):
             Offsets of the decoded characters. In combination with sampling rate and model downsampling rate char
             offsets can be used to compute time stamps for each character. Total logit score of the beam associated with
             produced text.
-        word_offsets (list of `list[dict[str, Union[int, str]]]` or `list[dict[str, Union[int, str]]]`):
+        word_offsets (list of `List[Dict[str, Union[int, str]]]` or `List[Dict[str, Union[int, str]]]`):
             Offsets of the decoded words. In combination with sampling rate and model downsampling rate word offsets
             can be used to compute time stamps for each word.
     """
 
-    text: Union[list[str], str]
-    char_offsets: Union[list[ListOfDict], ListOfDict] = None
-    word_offsets: Union[list[ListOfDict], ListOfDict] = None
+    text: Union[List[str], str]
+    char_offsets: Union[List[ListOfDict], ListOfDict] = None
+    word_offsets: Union[List[ListOfDict], ListOfDict] = None
 
 
 class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
@@ -248,12 +248,12 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
     def vocab_size(self) -> int:
         return len(self.decoder)
 
-    def get_vocab(self) -> dict:
+    def get_vocab(self) -> Dict:
         vocab = dict(self.encoder)
         vocab.update(self.added_tokens_encoder)
         return vocab
 
-    def _add_tokens(self, new_tokens: Union[list[str], list[AddedToken]], special_tokens: bool = False) -> int:
+    def _add_tokens(self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False) -> int:
         # Overwritten to never strip!
         to_add = []
         for token in new_tokens:
@@ -284,12 +284,12 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
 
     def convert_tokens_to_string(
         self,
-        tokens: list[str],
+        tokens: List[str],
         group_tokens: bool = True,
         spaces_between_special_tokens: bool = False,
         output_char_offsets: bool = False,
         output_word_offsets: bool = False,
-    ) -> dict[str, Union[str, float]]:
+    ) -> Dict[str, Union[str, float]]:
         """
         Converts a connectionist-temporal-classification (CTC) output tokens into a single string.
         """
@@ -347,8 +347,8 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
 
     @staticmethod
     def _compute_offsets(
-        char_repetitions: list[int], chars: list[str], ctc_token: int
-    ) -> list[dict[str, Union[str, int]]]:
+        char_repetitions: List[int], chars: List[str], ctc_token: int
+    ) -> List[Dict[str, Union[str, int]]]:
         end_indices = np.asarray(char_repetitions).cumsum()
         start_indices = np.concatenate(([0], end_indices[:-1]))
 
@@ -362,8 +362,8 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
 
     @staticmethod
     def _get_word_offsets(
-        offsets: dict[str, Union[str, float]], word_delimiter_char: str = " "
-    ) -> dict[str, Union[str, float]]:
+        offsets: Dict[str, Union[str, float]], word_delimiter_char: str = " "
+    ) -> Dict[str, Union[str, float]]:
         word_offsets = []
 
         last_state = "SPACE"
@@ -402,7 +402,7 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
 
     def _decode(
         self,
-        token_ids: list[int],
+        token_ids: List[int],
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: Optional[bool] = None,
         group_tokens: bool = True,
@@ -457,18 +457,18 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
     # because we need docs for `output_char_offsets` here
     def batch_decode(
         self,
-        sequences: Union[list[int], list[list[int]], "np.ndarray", "torch.Tensor", "tf.Tensor"],
+        sequences: Union[List[int], List[List[int]], "np.ndarray", "torch.Tensor", "tf.Tensor"],
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: Optional[bool] = None,
         output_char_offsets: bool = False,
         output_word_offsets: bool = False,
         **kwargs,
-    ) -> list[str]:
+    ) -> List[str]:
         """
         Convert a list of lists of token ids into a list of strings by calling decode.
 
         Args:
-            sequences (`Union[list[int], list[list[int]], np.ndarray, torch.Tensor, tf.Tensor]`):
+            sequences (`Union[List[int], List[List[int]], np.ndarray, torch.Tensor, tf.Tensor]`):
                 List of tokenized input ids. Can be obtained using the `__call__` method.
             skip_special_tokens (`bool`, *optional*, defaults to `False`):
                 Whether or not to remove special tokens in the decoding.
@@ -502,7 +502,7 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
                 Will be passed to the underlying model specific decode method.
 
         Returns:
-            `list[str]` or [`~models.wav2vec2.tokenization_wav2vec2.Wav2Vec2CTCTokenizerOutput`]: The list of decoded
+            `List[str]` or [`~models.wav2vec2.tokenization_wav2vec2.Wav2Vec2CTCTokenizerOutput`]: The list of decoded
             sentences. Will be a [`~models.wav2vec2.tokenization_wav2vec2.Wav2Vec2CTCTokenizerOutput`] when
             `output_char_offsets == True` or `output_word_offsets == True`.
         """
@@ -527,7 +527,7 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
     # and `output_word_offsets` here
     def decode(
         self,
-        token_ids: Union[int, list[int], "np.ndarray", "torch.Tensor", "tf.Tensor"],
+        token_ids: Union[int, List[int], "np.ndarray", "torch.Tensor", "tf.Tensor"],
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: Optional[bool] = None,
         output_char_offsets: bool = False,
@@ -541,7 +541,7 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
         Similar to doing `self.convert_tokens_to_string(self.convert_ids_to_tokens(token_ids))`.
 
         Args:
-            token_ids (`Union[int, list[int], np.ndarray, torch.Tensor, tf.Tensor]`):
+            token_ids (`Union[int, List[int], np.ndarray, torch.Tensor, tf.Tensor]`):
                 List of tokenized input ids. Can be obtained using the `__call__` method.
             skip_special_tokens (`bool`, *optional*, defaults to `False`):
                 Whether or not to remove special tokens in the decoding.
@@ -630,7 +630,7 @@ class Wav2Vec2CTCTokenizer(PreTrainedTokenizer):
             **kwargs,
         )
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> tuple[str]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         if not os.path.isdir(save_directory):
             logger.error(f"Vocabulary path ({save_directory}) should be a directory")
             return
@@ -777,7 +777,7 @@ class Wav2Vec2Tokenizer(PreTrainedTokenizer):
     @add_end_docstrings(WAV2VEC2_KWARGS_DOCSTRING)
     def __call__(
         self,
-        raw_speech: Union[np.ndarray, list[float], list[np.ndarray], list[list[float]]],
+        raw_speech: Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
         padding: Union[bool, str, PaddingStrategy] = False,
         max_length: Optional[int] = None,
         pad_to_multiple_of: Optional[int] = None,
@@ -791,7 +791,7 @@ class Wav2Vec2Tokenizer(PreTrainedTokenizer):
         sequences.
 
         Args:
-            raw_speech (`np.ndarray`, `list[float]`, `list[np.ndarray]`, `list[list[float]]`):
+            raw_speech (`np.ndarray`, `List[float]`, `List[np.ndarray]`, `List[List[float]]`):
                 The sequence or batch of sequences to be padded. Each sequence can be a numpy array, a list of float
                 values, a list of numpy array or a list of list of float values. Must be mono channel audio, not
                 stereo, i.e. single float per timestep.
@@ -842,7 +842,7 @@ class Wav2Vec2Tokenizer(PreTrainedTokenizer):
     def vocab_size(self) -> int:
         return len(self.decoder)
 
-    def get_vocab(self) -> dict:
+    def get_vocab(self) -> Dict:
         return dict(self.encoder, **self.added_tokens_encoder)
 
     def _convert_token_to_id(self, token: str) -> int:
@@ -854,7 +854,7 @@ class Wav2Vec2Tokenizer(PreTrainedTokenizer):
         result = self.decoder.get(index, self.unk_token)
         return result
 
-    def convert_tokens_to_string(self, tokens: list[str]) -> str:
+    def convert_tokens_to_string(self, tokens: List[str]) -> str:
         """
         Converts a connectionist-temporal-classification (CTC) output tokens into a single string.
         """
@@ -874,7 +874,7 @@ class Wav2Vec2Tokenizer(PreTrainedTokenizer):
 
     def _decode(
         self,
-        token_ids: list[int],
+        token_ids: List[int],
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: Optional[bool] = None,
         **kwargs,
@@ -907,7 +907,7 @@ class Wav2Vec2Tokenizer(PreTrainedTokenizer):
         else:
             return text
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> tuple[str]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         if not os.path.isdir(save_directory):
             logger.error(f"Vocabulary path ({save_directory}) should be a directory")
             return

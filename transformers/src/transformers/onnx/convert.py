@@ -13,11 +13,10 @@
 # limitations under the License.
 
 import warnings
-from collections.abc import Iterable
 from inspect import signature
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 from packaging.version import Version, parse
@@ -88,7 +87,7 @@ def export_pytorch(
     output: Path,
     tokenizer: Optional["PreTrainedTokenizer"] = None,
     device: str = "cpu",
-) -> tuple[list[str], list[str]]:
+) -> Tuple[List[str], List[str]]:
     """
     Export a PyTorch model to an ONNX Intermediate Representation (IR)
 
@@ -107,7 +106,7 @@ def export_pytorch(
             The device on which the ONNX model will be exported. Either `cpu` or `cuda`.
 
     Returns:
-        `tuple[list[str], list[str]]`: A tuple with an ordered list of the model's inputs, and the named inputs from
+        `Tuple[List[str], List[str]]`: A tuple with an ordered list of the model's inputs, and the named inputs from
         the ONNX configuration.
     """
 
@@ -146,11 +145,11 @@ def export_pytorch(
                 model.to(device)
                 model_inputs_device = {}
                 for k, v in model_inputs.items():
-                    if isinstance(v, tuple):
+                    if isinstance(v, Tuple):
                         model_inputs_device[k] = tuple(
                             x.to(device) if isinstance(x, torch.Tensor) else None for x in v
                         )
-                    elif isinstance(v, list):
+                    elif isinstance(v, List):
                         model_inputs_device[k] = [
                             tuple(x.to(device) if isinstance(x, torch.Tensor) else None for x in t) for t in v
                         ]
@@ -190,7 +189,7 @@ def export_tensorflow(
     opset: int,
     output: Path,
     tokenizer: Optional["PreTrainedTokenizer"] = None,
-) -> tuple[list[str], list[str]]:
+) -> Tuple[List[str], List[str]]:
     """
     Export a TensorFlow model to an ONNX Intermediate Representation (IR)
 
@@ -207,7 +206,7 @@ def export_tensorflow(
             Directory to store the exported ONNX model.
 
     Returns:
-        `tuple[list[str], list[str]]`: A tuple with an ordered list of the model's inputs, and the named inputs from
+        `Tuple[List[str], List[str]]`: A tuple with an ordered list of the model's inputs, and the named inputs from
         the ONNX configuration.
     """
     import onnx
@@ -257,7 +256,7 @@ def export(
     output: Path,
     tokenizer: Optional["PreTrainedTokenizer"] = None,
     device: str = "cpu",
-) -> tuple[list[str], list[str]]:
+) -> Tuple[List[str], List[str]]:
     """
     Export a Pytorch or TensorFlow model to an ONNX Intermediate Representation (IR)
 
@@ -277,7 +276,7 @@ def export(
             export on CUDA devices.
 
     Returns:
-        `tuple[list[str], list[str]]`: A tuple with an ordered list of the model's inputs, and the named inputs from
+        `Tuple[List[str], List[str]]`: A tuple with an ordered list of the model's inputs, and the named inputs from
         the ONNX configuration.
     """
     if not (is_torch_available() or is_tf_available()):
@@ -320,7 +319,7 @@ def validate_model_outputs(
     preprocessor: Union["PreTrainedTokenizer", "FeatureExtractionMixin", "ProcessorMixin"],
     reference_model: Union["PreTrainedModel", "TFPreTrainedModel"],
     onnx_model: Path,
-    onnx_named_outputs: list[str],
+    onnx_named_outputs: List[str],
     atol: float,
     tokenizer: Optional["PreTrainedTokenizer"] = None,
 ):
@@ -440,7 +439,7 @@ def validate_model_outputs(
 
 def ensure_model_and_config_inputs_match(
     model: Union["PreTrainedModel", "TFPreTrainedModel"], model_inputs: Iterable[str]
-) -> tuple[bool, list[str]]:
+) -> Tuple[bool, List[str]]:
     """
 
     :param model_inputs: :param config_inputs: :return:

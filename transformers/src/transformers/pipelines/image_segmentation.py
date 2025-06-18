@@ -1,4 +1,4 @@
-from typing import Any, Union, overload
+from typing import Any, Dict, List, Union
 
 import numpy as np
 
@@ -21,6 +21,10 @@ if is_torch_available():
 
 
 logger = logging.get_logger(__name__)
+
+
+Prediction = Dict[str, Any]
+Predictions = List[Prediction]
 
 
 @add_end_docstrings(build_pipeline_init_args(has_image_processor=True))
@@ -90,20 +94,12 @@ class ImageSegmentationPipeline(Pipeline):
 
         return preprocess_kwargs, {}, postprocess_kwargs
 
-    @overload
-    def __call__(self, inputs: Union[str, "Image.Image"], **kwargs: Any) -> list[dict[str, Any]]: ...
-
-    @overload
-    def __call__(self, inputs: Union[list[str], list["Image.Image"]], **kwargs: Any) -> list[list[dict[str, Any]]]: ...
-
-    def __call__(
-        self, inputs: Union[str, "Image.Image", list[str], list["Image.Image"]], **kwargs: Any
-    ) -> Union[list[dict[str, Any]], list[list[dict[str, Any]]]]:
+    def __call__(self, inputs=None, **kwargs) -> Union[Predictions, List[Prediction]]:
         """
         Perform segmentation (detect masks & classes) in the image(s) passed as inputs.
 
         Args:
-            inputs (`str`, `list[str]`, `PIL.Image` or `list[PIL.Image]`):
+            inputs (`str`, `List[str]`, `PIL.Image` or `List[PIL.Image]`):
                 The pipeline handles three types of images:
 
                 - A string containing an HTTP(S) link pointing to an image
@@ -127,8 +123,9 @@ class ImageSegmentationPipeline(Pipeline):
                 the call may block forever.
 
         Return:
-            If the input is a single image, will return a list of dictionaries, if the input is a list of several images,
-            will return a list of list of dictionaries corresponding to each image.
+            A dictionary or a list of dictionaries containing the result. If the input is a single image, will return a
+            list of dictionaries, if the input is a list of several images, will return a list of list of dictionaries
+            corresponding to each image.
 
             The dictionaries contain the mask, label and score (where applicable) of each detected object and contains
             the following keys:

@@ -327,8 +327,7 @@ class GroundingDinoModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.Tes
             inputs_dict["output_attentions"] = True
             inputs_dict["output_hidden_states"] = False
             config.return_dict = True
-            model = model_class._from_config(config, attn_implementation="eager")
-            config = model.config
+            model = model_class(config)
             model.to(torch_device)
             model.eval()
             with torch.no_grad():
@@ -718,7 +717,7 @@ class GroundingDinoModelIntegrationTests(unittest.TestCase):
 
     @require_torch_accelerator
     @is_flaky()
-    def test_inference_object_detection_head_equivalence_cpu_accelerator(self):
+    def test_inference_object_detection_head_equivalence_cpu_gpu(self):
         processor = self.default_processor
         image = prepare_img()
         text = prepare_text()
@@ -730,7 +729,7 @@ class GroundingDinoModelIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             cpu_outputs = model(**encoding)
 
-        # 2. run model on accelerator
+        # 2. run model on GPU
         model.to(torch_device)
         encoding = encoding.to(torch_device)
         with torch.no_grad():

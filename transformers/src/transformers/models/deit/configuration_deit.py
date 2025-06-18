@@ -15,7 +15,7 @@
 """DeiT model configuration"""
 
 from collections import OrderedDict
-from collections.abc import Mapping
+from typing import Mapping
 
 from packaging import version
 

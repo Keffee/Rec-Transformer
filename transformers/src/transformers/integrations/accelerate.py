@@ -156,7 +156,7 @@ def find_tied_parameters(model: "nn.Module", **kwargs):
         model (`torch.nn.Module`): The model to inspect.
 
     Returns:
-        list[list[str]]: A list of lists of parameter names being all tied together.
+        List[List[str]]: A list of lists of parameter names being all tied together.
 
     Example:
 

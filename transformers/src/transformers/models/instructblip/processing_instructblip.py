@@ -17,12 +17,17 @@ Processor class for InstructBLIP. Largely copy of Blip2Processor with addition o
 """
 
 import os
-from typing import Union
+from typing import List, Union
 
 from ...image_processing_utils import BatchFeature
 from ...image_utils import ImageInput
 from ...processing_utils import ProcessingKwargs, ProcessorMixin, Unpack
-from ...tokenization_utils_base import AddedToken, BatchEncoding, PreTokenizedInput, TextInput
+from ...tokenization_utils_base import (
+    AddedToken,
+    BatchEncoding,
+    PreTokenizedInput,
+    TextInput,
+)
 from ...utils import logging
 from ..auto import AutoTokenizer
 
@@ -67,6 +72,7 @@ class InstructBlipProcessor(ProcessorMixin):
     """
 
     attributes = ["image_processor", "tokenizer", "qformer_tokenizer"]
+    valid_kwargs = ["num_query_tokens"]
     image_processor_class = ("BlipImageProcessor", "BlipImageProcessorFast")
     tokenizer_class = "AutoTokenizer"
     qformer_tokenizer_class = "AutoTokenizer"
@@ -83,7 +89,7 @@ class InstructBlipProcessor(ProcessorMixin):
     def __call__(
         self,
         images: ImageInput = None,
-        text: Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]] = None,
+        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
         audio=None,
         videos=None,
         **kwargs: Unpack[InstructBlipProcessorKwargs],
@@ -97,7 +103,7 @@ class InstructBlipProcessor(ProcessorMixin):
             images (`ImageInput`):
                 The image or batch of images to be prepared. Each image can be a PIL image, NumPy array or PyTorch
                 tensor. Both channels-first and channels-last formats are supported.
-            text (`TextInput`, `PreTokenizedInput`, `list[TextInput]`, `list[PreTokenizedInput]`):
+            text (`TextInput`, `PreTokenizedInput`, `List[TextInput]`, `List[PreTokenizedInput]`):
                 The sequence or batch of sequences to be encoded. Each sequence can be a string or a list of strings
                 (pretokenized string). If the sequences are provided as list of strings (pretokenized), you must set
                 `is_split_into_words=True` (to lift the ambiguity with a batch of sequences).

@@ -15,7 +15,6 @@
 import copy
 import unittest
 
-from packaging import version
 from parameterized import parameterized
 
 from transformers import set_seed
@@ -23,7 +22,6 @@ from transformers.generation.configuration_utils import ALL_CACHE_IMPLEMENTATION
 from transformers.testing_utils import (
     CaptureStderr,
     backend_device_count,
-    backend_torch_accelerator_module,
     cleanup,
     get_gpu_count,
     is_torch_available,
@@ -57,7 +55,6 @@ if is_torch_available():
         convert_and_export_with_cache,
         pipeline,
     )
-    from transformers.integrations.executorch import export_with_dynamic_cache
 
 
 TEST_CACHE_IMPLEMENTATIONS = [
@@ -432,7 +429,11 @@ class CacheHardIntegrationTest(unittest.TestCase):
         original = GenerationConfig(**common)
         offloaded = GenerationConfig(cache_implementation="offloaded", **common)
 
-        torch_accelerator_module = backend_torch_accelerator_module(device.type)
+        torch_accelerator_module = None
+        if device.type == "cuda":
+            torch_accelerator_module = torch.cuda
+        elif device.type == "xpu":
+            torch_accelerator_module = torch.xpu
 
         torch_accelerator_module.reset_peak_memory_stats(device)
         model.generate(generation_config=original, **inputs)
@@ -556,7 +557,7 @@ class CacheHardIntegrationTest(unittest.TestCase):
         _ = model(**inputs)
         _ = model.generate(**inputs, max_new_tokens=2, cache_implementation="hybrid")
 
-    @require_torch_accelerator
+    @require_torch_gpu
     @parameterized.expand(TEST_CACHE_IMPLEMENTATIONS)
     def test_cache_gptj_model(self, cache_implementation):
         """Tests caches with GPT-J model. Regression test for https://github.com/huggingface/transformers/pull/34799"""
@@ -592,11 +593,22 @@ class CacheExportIntegrationTest(unittest.TestCase):
         attention_mask = inputs.attention_mask
         input_ids = inputs.input_ids
 
-        ep = export_with_dynamic_cache(model, input_ids, attention_mask)
+        past_key_values = DynamicCache()
+        ep = torch.export.export(
+            model,
+            (),
+            {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "past_key_values": past_key_values,
+                "use_cache": True,
+            },
+            strict=False,
+        )
         res = ep.module()(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            past_key_values=DynamicCache(),
+            past_key_values=past_key_values,
             use_cache=True,
         )
         self.assertTrue(len(res.past_key_values.key_cache) == model.config.num_hidden_layers)
@@ -681,27 +693,15 @@ class CacheExportIntegrationTest(unittest.TestCase):
         self.assertEqual(n_static_key_caches, model.config.num_hidden_layers)
         self.assertEqual(n_static_value_caches, model.config.num_hidden_layers)
 
-        # Export with dynamic shapes
-        input_ids = torch.zeros((1, 3), dtype=torch.long)
-        cache_position = torch.tensor([0, 1, 2], dtype=torch.long)
-        dynamic_shapes = {"input_ids": {1: torch.export.Dim.DYNAMIC}, "cache_position": {0: torch.export.Dim.DYNAMIC}}
-        strict = version.parse(torch.__version__) != version.parse("2.7.0")
+        # Export with dynamic shapes using Dim.AUTO
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        input_ids = tokenizer("Here's everything I know", return_tensors="pt").input_ids
+        dynamic_shapes = {"input_ids": {1: torch.export.Dim.AUTO}, "cache_position": None}
         exported_program = convert_and_export_with_cache(
             model,
             example_input_ids=input_ids,
-            example_cache_position=cache_position,
             dynamic_shapes=dynamic_shapes,
-            strict=strict,
-        )
-
-        from transformers.integrations.executorch import TorchExportableModuleForDecoderOnlyLM
-
-        exportable_module = TorchExportableModuleForDecoderOnlyLM(model)
-        exported_program = exportable_module.export(
-            input_ids=input_ids,
-            cache_position=cache_position,
-            dynamic_shapes=dynamic_shapes,
-            strict=strict,
+            strict=False,
         )
 
     def test_hybrid_cache_exportability(self):
@@ -740,15 +740,13 @@ class CacheExportIntegrationTest(unittest.TestCase):
         self.assertEqual(n_g_value_caches, model.config.num_hidden_layers)
 
         # Export with dynamic shapes using Dim.AUTO
-        input_ids = torch.zeros((1, 3), dtype=torch.long)
-        cache_position = torch.tensor([0, 1, 2], dtype=torch.long)
-        dynamic_shapes = {"input_ids": {1: torch.export.Dim.DYNAMIC}, "cache_position": {0: torch.export.Dim.DYNAMIC}}
-        strict = version.parse(torch.__version__) != version.parse("2.7.0")
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        input_ids = tokenizer("Here's everything I know", return_tensors="pt").input_ids
+        dynamic_shapes = {"input_ids": {1: torch.export.Dim.AUTO}, "cache_position": None}
         exported_program = exportable_module.export(
             input_ids=input_ids,
-            cache_position=cache_position,
             dynamic_shapes=dynamic_shapes,
-            strict=strict,
+            strict=False,
         )
 
 

@@ -19,7 +19,7 @@ Fast tokenizer class for Nougat.
 import re
 from functools import partial
 from multiprocessing import Pool
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 
@@ -258,13 +258,13 @@ def get_slices(lines, clean_lines):
       greater than 0.9.
 
     Args:
-        lines (`list[str]`):
+        lines (`List[str]`):
             The list of lines containing the text.
-        clean_lines (`list[str]`):
+        clean_lines (`List[str]`):
             A cleaned version of the text (without numbers).
 
     Returns:
-        `list[tuple]`: A list of tuples representing the start and end indices of text slices.
+        `List[tuple]`: A list of tuples representing the start and end indices of text slices.
     """
     indices = np.zeros(len(lines))
     for i in range(len(lines) - 1):
@@ -582,10 +582,10 @@ class NougatTokenizerFast(PreTrainedTokenizerFast):
 
     def post_process_generation(
         self,
-        generation: Union[str, list[str]],
+        generation: Union[str, List[str]],
         fix_markdown: bool = True,
         num_workers: Optional[int] = None,
-    ) -> Union[str, list[str]]:
+    ) -> Union[str, List[str]]:
         """
         Postprocess a generated text or a list of generated texts.
 
@@ -594,7 +594,7 @@ class NougatTokenizerFast(PreTrainedTokenizerFast):
         Postprocessing is quite slow so it is recommended to use multiprocessing to speed up the process.
 
         Args:
-            generation (Union[str, list[str]]):
+            generation (Union[str, List[str]]):
                 The generated text or a list of generated texts.
             fix_markdown (`bool`, *optional*, defaults to `True`):
                 Whether to perform Markdown formatting fixes.
@@ -603,7 +603,7 @@ class NougatTokenizerFast(PreTrainedTokenizerFast):
                 parallel).
 
         Returns:
-            Union[str, list[str]]: The postprocessed text or list of postprocessed texts.
+            Union[str, List[str]]: The postprocessed text or list of postprocessed texts.
         """
         requires_backends(self, ["nltk", "levenshtein"])
 

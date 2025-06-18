@@ -15,8 +15,7 @@
 """LayoutLMv3 model configuration"""
 
 from collections import OrderedDict
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from packaging import version
 

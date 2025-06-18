@@ -15,7 +15,7 @@
 """RoFormer model configuration"""
 
 from collections import OrderedDict
-from collections.abc import Mapping
+from typing import Mapping
 
 from ...configuration_utils import PretrainedConfig
 from ...onnx import OnnxConfig

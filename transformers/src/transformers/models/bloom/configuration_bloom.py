@@ -15,8 +15,7 @@
 """Bloom configuration"""
 
 from collections import OrderedDict
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional
 
 from packaging import version
 
@@ -149,7 +148,7 @@ class BloomOnnxConfig(OnnxConfigWithPast):
         self,
         config: PretrainedConfig,
         task: str = "default",
-        patching_specs: Optional[list[PatchingSpec]] = None,
+        patching_specs: Optional[List[PatchingSpec]] = None,
         use_past: bool = False,
     ):
         super().__init__(config, task=task, patching_specs=patching_specs, use_past=use_past)

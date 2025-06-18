@@ -32,7 +32,6 @@ from ..utils import (
     is_torch_available,
     is_torch_hpu_available,
     is_torch_npu_available,
-    is_torch_xpu_available,
 )
 from . import BaseTransformersCLICommand
 
@@ -90,24 +89,14 @@ class EnvironmentCommand(BaseTransformersCLICommand):
 
         pt_version = "not installed"
         pt_cuda_available = "NA"
-        pt_accelerator = "NA"
         if is_torch_available():
             import torch
 
             pt_version = torch.__version__
             pt_cuda_available = torch.cuda.is_available()
-            pt_xpu_available = is_torch_xpu_available()
+            pt_xpu_available = torch.xpu.is_available()
             pt_npu_available = is_torch_npu_available()
             pt_hpu_available = is_torch_hpu_available()
-
-            if pt_cuda_available:
-                pt_accelerator = "CUDA"
-            elif pt_xpu_available:
-                pt_accelerator = "XPU"
-            elif pt_npu_available:
-                pt_accelerator = "NPU"
-            elif pt_hpu_available:
-                pt_accelerator = "HPU"
 
         tf_version = "not installed"
         tf_cuda_available = "NA"
@@ -152,7 +141,7 @@ class EnvironmentCommand(BaseTransformersCLICommand):
             "Accelerate version": f"{accelerate_version}",
             "Accelerate config": f"{accelerate_config_str}",
             "DeepSpeed version": f"{deepspeed_version}",
-            "PyTorch version (accelerator?)": f"{pt_version} ({pt_accelerator})",
+            "PyTorch version (GPU?)": f"{pt_version} ({pt_cuda_available})",
             "Tensorflow version (GPU?)": f"{tf_version} ({tf_cuda_available})",
             "Flax version (CPU?/GPU?/TPU?)": f"{flax_version} ({jax_backend})",
             "Jax version": f"{jax_version}",

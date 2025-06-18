@@ -15,9 +15,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from functools import lru_cache
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -77,7 +76,7 @@ def rot_vec_mul(r: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
 
 @lru_cache(maxsize=None)
 def identity_rot_mats(
-    batch_dims: tuple[int, ...],
+    batch_dims: Tuple[int, ...],
     dtype: Optional[torch.dtype] = None,
     device: Optional[torch.device] = None,
     requires_grad: bool = True,
@@ -92,7 +91,7 @@ def identity_rot_mats(
 
 @lru_cache(maxsize=None)
 def identity_trans(
-    batch_dims: tuple[int, ...],
+    batch_dims: Tuple[int, ...],
     dtype: Optional[torch.dtype] = None,
     device: Optional[torch.device] = None,
     requires_grad: bool = True,
@@ -103,7 +102,7 @@ def identity_trans(
 
 @lru_cache(maxsize=None)
 def identity_quats(
-    batch_dims: tuple[int, ...],
+    batch_dims: Tuple[int, ...],
     dtype: Optional[torch.dtype] = None,
     device: Optional[torch.device] = None,
     requires_grad: bool = True,
@@ -116,12 +115,12 @@ def identity_quats(
     return quat
 
 
-_quat_elements: list[str] = ["a", "b", "c", "d"]
-_qtr_keys: list[str] = [l1 + l2 for l1 in _quat_elements for l2 in _quat_elements]
-_qtr_ind_dict: dict[str, int] = {key: ind for ind, key in enumerate(_qtr_keys)}
+_quat_elements: List[str] = ["a", "b", "c", "d"]
+_qtr_keys: List[str] = [l1 + l2 for l1 in _quat_elements for l2 in _quat_elements]
+_qtr_ind_dict: Dict[str, int] = {key: ind for ind, key in enumerate(_qtr_keys)}
 
 
-def _to_mat(pairs: list[tuple[str, int]]) -> np.ndarray:
+def _to_mat(pairs: List[Tuple[str, int]]) -> np.ndarray:
     mat = np.zeros((4, 4))
     for key, value in pairs:
         ind = _qtr_ind_dict[key]
@@ -213,7 +212,7 @@ _QUAT_MULTIPLY[:, :, 3] = [[0, 0, 0, 1], [0, 0, 1, 0], [0, -1, 0, 0], [1, 0, 0, 
 
 _QUAT_MULTIPLY_BY_VEC = _QUAT_MULTIPLY[:, 1:, :]
 
-_CACHED_QUATS: dict[str, np.ndarray] = {
+_CACHED_QUATS: Dict[str, np.ndarray] = {
     "_QTR_MAT": _QTR_MAT,
     "_QUAT_MULTIPLY": _QUAT_MULTIPLY,
     "_QUAT_MULTIPLY_BY_VEC": _QUAT_MULTIPLY_BY_VEC,
@@ -785,7 +784,7 @@ class Rigid:
 
     @staticmethod
     def identity(
-        shape: tuple[int, ...],
+        shape: Tuple[int, ...],
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         requires_grad: bool = True,

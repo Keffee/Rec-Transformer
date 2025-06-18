@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import List
 
 from ...configuration_utils import PretrainedConfig
 from ...utils import logging
@@ -62,7 +63,7 @@ class SuperPointConfig(PretrainedConfig):
 
     def __init__(
         self,
-        encoder_hidden_sizes: list[int] = [64, 64, 128, 128],
+        encoder_hidden_sizes: List[int] = [64, 64, 128, 128],
         decoder_hidden_size: int = 256,
         keypoint_decoder_dim: int = 65,
         descriptor_decoder_dim: int = 256,

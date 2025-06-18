@@ -373,10 +373,3 @@ AutoModel.register(NewModelConfig, NewModel)
 ### FlaxAutoModelForVision2Seq[[transformers.FlaxAutoModelForVision2Seq]]
 
 [[autodoc]] FlaxAutoModelForVision2Seq
-
-## Time Series
-
-### AutoModelForTimeSeriesPrediction[[transformers.AutoModelForTimeSeriesPrediction]]
-
-[[autodoc]] AutoModelForTimeSeriesPrediction
-

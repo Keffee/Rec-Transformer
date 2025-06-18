@@ -15,7 +15,7 @@
 
 import math
 from contextlib import nullcontext
-from typing import Literal, Optional, Union
+from typing import Dict, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -251,7 +251,7 @@ def _unpad_modernbert_input(
     attention_mask: torch.Tensor,
     position_ids: Optional[torch.Tensor] = None,
     labels: Optional[torch.Tensor] = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, Optional[torch.Tensor], Optional[torch.Tensor]]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
     Remove padding from input sequences.
 
@@ -428,7 +428,7 @@ class ModernBertUnpaddedRotaryEmbedding(RotaryEmbedding):
         qkv: torch.Tensor,
         cu_seqlens: torch.Tensor,
         max_seqlen: Optional[int] = None,
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Apply rotary embedding *inplace* to qkv.
         qkv: (total_nnz, 3, nheads, headdim)
@@ -514,12 +514,12 @@ def eager_attention_forward(
     attention_mask: torch.Tensor,
     sliding_window_mask: torch.Tensor,
     position_ids: Optional[torch.LongTensor],
-    local_attention: tuple[int, int],
+    local_attention: Tuple[int, int],
     bs: int,
     dim: int,
     output_attentions: Optional[bool] = False,
     **_kwargs,
-) -> Union[tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor]]:
+) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
     # qkv: [batch_size, seqlen, 3, nheads, headdim]
     cos, sin = module.rotary_emb(qkv, position_ids=position_ids)
     query, key, value = qkv.transpose(3, 1).unbind(dim=2)
@@ -551,12 +551,12 @@ def flash_attention_forward(
     rotary_emb: ModernBertUnpaddedRotaryEmbedding,
     cu_seqlens: torch.Tensor,
     max_seqlen: int,
-    local_attention: tuple[int, int],
+    local_attention: Tuple[int, int],
     bs: int,
     dim: int,
     target_dtype: torch.dtype = torch.bfloat16,
     **_kwargs,
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     # (total_seqlen, 3, nheads, headdim)
     qkv = rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen)
 
@@ -594,11 +594,11 @@ def sdpa_attention_forward(
     attention_mask: torch.Tensor,
     sliding_window_mask: torch.Tensor,
     position_ids: Optional[torch.LongTensor],
-    local_attention: tuple[int, int],
+    local_attention: Tuple[int, int],
     bs: int,
     dim: int,
     **_kwargs,
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     # qkv: [batch_size, seqlen, 3, nheads, headdim]
     cos, sin = module.rotary_emb(qkv, position_ids=position_ids)
     query, key, value = qkv.transpose(3, 1).unbind(dim=2)
@@ -817,8 +817,9 @@ class ModernBertPreTrainedModel(PreTrainedModel):
     def _autoset_attn_implementation(
         cls,
         config,
+        use_flash_attention_2: bool = False,
         torch_dtype: Optional[torch.dtype] = None,
-        device_map: Optional[Union[str, dict[str, int]]] = None,
+        device_map: Optional[Union[str, Dict[str, int]]] = None,
         check_device_map: bool = True,
     ):
         # If the user didn't specify anything, try to use flash_attention_2 if available.
@@ -839,7 +840,8 @@ class ModernBertPreTrainedModel(PreTrainedModel):
                 config._attn_implementation_internal = None
         return super()._autoset_attn_implementation(
             config,
-            torch_dtype=torch_dtype,
+            use_flash_attention_2=use_flash_attention_2,
+            torch_dtype=torch.float16,
             device_map=device_map,
             check_device_map=check_device_map,
         )
@@ -923,7 +925,7 @@ class ModernBertModel(ModernBertPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[tuple[torch.Tensor, ...], BaseModelOutput]:
+    ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutput]:
         r"""
         sliding_window_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding or far-away tokens. In ModernBert, only every few layers
@@ -1135,7 +1137,7 @@ class ModernBertForMaskedLM(ModernBertPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         **kwargs,
-    ) -> Union[tuple[torch.Tensor], MaskedLMOutput]:
+    ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
         sliding_window_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding or far-away tokens. In ModernBert, only every few layers
@@ -1267,7 +1269,7 @@ class ModernBertForSequenceClassification(ModernBertPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         **kwargs,
-    ) -> Union[tuple[torch.Tensor], SequenceClassifierOutput]:
+    ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
         r"""
         sliding_window_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding or far-away tokens. In ModernBert, only every few layers
@@ -1389,7 +1391,7 @@ class ModernBertForTokenClassification(ModernBertPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[tuple[torch.Tensor], TokenClassifierOutput]:
+    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         r"""
         sliding_window_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding or far-away tokens. In ModernBert, only every few layers
@@ -1480,7 +1482,7 @@ class ModernBertForQuestionAnswering(ModernBertPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         **kwargs,
-    ) -> Union[tuple[torch.Tensor], QuestionAnsweringModelOutput]:
+    ) -> Union[Tuple[torch.Tensor], QuestionAnsweringModelOutput]:
         r"""
         sliding_window_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding or far-away tokens. In ModernBert, only every few layers

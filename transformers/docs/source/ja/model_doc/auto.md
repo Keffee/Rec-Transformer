@@ -372,10 +372,3 @@ AutoModel.register(NewModelConfig, NewModel)
 ### AutoModelForImageTextToText
 
 [[autodoc]] AutoModelForImageTextToText
-
-## Time Series
-
-### AutoModelForTimeSeriesPrediction
-
-[[autodoc]] AutoModelForTimeSeriesPrediction
-

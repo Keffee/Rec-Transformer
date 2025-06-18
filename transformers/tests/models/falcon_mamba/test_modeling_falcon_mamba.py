@@ -381,7 +381,9 @@ class FalconMambaModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTest
     @slow
     # Ignore copy
     def test_model_from_pretrained(self):
-        model = FalconMambaModel.from_pretrained("tiiuae/falcon-mamba-7b", torch_dtype=torch.float16)
+        model = FalconMambaModel.from_pretrained(
+            "tiiuae/falcon-mamba-7b", torch_dtype=torch.float16, low_cpu_mem_usage=True
+        )
         self.assertIsNotNone(model)
 
     def test_model_outputs_equivalence(self):

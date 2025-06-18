@@ -32,7 +32,6 @@ from transformers.models.opt.modeling_opt import OPTAttention
 from transformers.testing_utils import (
     apply_skip_if_not_implemented,
     backend_empty_cache,
-    backend_torch_accelerator_module,
     is_bitsandbytes_available,
     is_torch_available,
     require_accelerate,
@@ -377,7 +376,7 @@ class Bnb4BitT5Test(unittest.TestCase):
         avoid unexpected behaviors. Please see: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
         """
         gc.collect()
-        backend_empty_cache(torch_device)
+        torch.cuda.empty_cache()
 
     def test_inference_without_keep_in_fp32(self):
         r"""
@@ -461,7 +460,7 @@ class Classes4BitModelTest(Base4bitTest):
         del self.seq_to_seq_model
 
         gc.collect()
-        backend_empty_cache(torch_device)
+        torch.cuda.empty_cache()
 
     def test_correct_head_class(self):
         r"""
@@ -492,7 +491,7 @@ class Pipeline4BitTest(Base4bitTest):
             del self.pipe
 
         gc.collect()
-        backend_empty_cache(torch_device)
+        torch.cuda.empty_cache()
 
     def test_pipeline(self):
         r"""
@@ -590,10 +589,10 @@ class Bnb4BitTestTraining(Base4bitTest):
         # Step 1: freeze all parameters
         model = AutoModelForCausalLM.from_pretrained(self.model_name, load_in_4bit=True)
 
-        if torch_device in ["cuda", "xpu"]:
-            self.assertEqual(
-                set(model.hf_device_map.values()), {backend_torch_accelerator_module(torch_device).current_device()}
-            )
+        if torch.cuda.is_available():
+            self.assertEqual(set(model.hf_device_map.values()), {torch.cuda.current_device()})
+        elif torch.xpu.is_available():
+            self.assertEqual(set(model.hf_device_map.values()), {f"xpu:{torch.xpu.current_device()}"})
         else:
             self.assertTrue(all(param.device.type == "cpu" for param in model.parameters()))
 
