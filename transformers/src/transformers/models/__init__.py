@@ -334,6 +334,8 @@ if TYPE_CHECKING:
     from .zamba import *
     from .zamba2 import *
     from .zoedepth import *
+    
+    from .aaa_llama4rec import *
 else:
     import sys
 
