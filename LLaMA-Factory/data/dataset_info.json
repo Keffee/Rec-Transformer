@@ -714,5 +714,11 @@
       "prompt": "content"
     },
     "folder": "python"
+  },
+  "pantry_llama_pt_format_try": {
+    "file_name": "/home/kfwang/20250613Rec-Factory/data/amazon_pantry_from_qspan/llama_pt_format.json",
+    "columns": {
+      "prompt": "text"
+    }
   }
 }
