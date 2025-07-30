@@ -168,7 +168,7 @@ class LlamaForRec(LlamaRecForCausalLM):
             **kwargs,
         )
 
-        hidden_states = outputs.last_hidden_state
+        hidden_states = outputs.last_hidden_state   # input_ids明明还是50维的，但是到了hidden_states就变成了49维
         loss = None
         
         # --- 这是关键的“双轨”逻辑 ---
