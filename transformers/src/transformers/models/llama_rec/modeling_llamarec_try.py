@@ -3,7 +3,9 @@ import torch
 import logging
 from typing import Optional, Union
 from transformers.cache_utils import Cache
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, CausalLMOutputWithPast, BaseModelOutputWithPast
+from transformers.models.llama_rec.modeling_llama_base import LlamaRecForCausalLM, CausalLMOutputWithPast, BaseModelOutputWithPast
+from transformers.models.llama_rec.configuration_llamarec import LlamaRecConfig
+from torch.nn import CrossEntropyLoss
 
 def fixed_cross_entropy(
     source: torch.Tensor,
@@ -19,6 +21,40 @@ def fixed_cross_entropy(
     return loss
 
 def ForRecLoss(
+    logits: torch.Tensor, # 形状为 (batch_size, seq_len, vocab_size)
+    labels: torch.Tensor,
+    ignore_index: int = -100,
+    shift_labels: Optional[torch.Tensor] = None,
+    # item_embeddings 和 num_negative_samples 不再需要了
+    **kwargs,
+) -> torch.Tensor:
+    
+    # 1. 移位标签，这是语言模型/序列推荐的标准操作
+    if shift_labels is None:
+        # 预测第 n 个 token 需要使用前 n-1 个 token 的信息
+        # 因此 logits 的第 n-1 个位置对应 labels 的第 n 个位置
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+    else:
+        # 如果已经手动移位，直接使用
+        shift_logits = logits.contiguous()
+        shift_labels = shift_labels.contiguous()
+
+    # 2. 展平数据以符合 CrossEntropyLoss 的输入要求
+    # CrossEntropyLoss 要求 logits 的形状是 (N, C) 和 labels 的形状是 (N)
+    # C 是类别总数，这里就是 vocab_size
+    vocab_size = shift_logits.size(-1)
+    
+    loss = nn.functional.cross_entropy(
+        input=shift_logits.view(-1, vocab_size), 
+        target=shift_labels.view(-1), 
+        ignore_index=ignore_index,
+        reduction="mean" # 对批次中的所有有效 token 的损失取平均
+    )
+
+    return loss
+
+def ForRecLoss_old( # 旧的实现，这里在实现的时候其实传入的是hidden_states，而不是logits
     logits: torch.Tensor,  # These are now hidden states, not raw scores for all vocab
     labels: torch.Tensor,
     vocab_size: int,
@@ -89,7 +125,7 @@ def ForRecLoss(
     return loss
 
 # 假设你的 LlamaForRec 类已经定义
-class LlamaForRec(LlamaForCausalLM):
+class LlamaForRec(LlamaRecForCausalLM):
     """
     A LlamaForCausalLM model adapted for recommendation, which supports
     both efficient training with sampled softmax and standard generation for inference/RL.
@@ -142,26 +178,36 @@ class LlamaForRec(LlamaForCausalLM):
             # 高效的训练路径
             slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
             # "logits" 变量临时存储 hidden_states，用于计算 loss
-            hidden_states_for_loss = hidden_states[:, slice_indices, :]
+            
+            logits = self.lm_head(hidden_states)
+            hidden_states_for_loss = logits[:, slice_indices, :]
             
             loss = self.loss_function(
                 logits=hidden_states_for_loss,
                 labels=labels,
                 vocab_size=self.config.vocab_size,
-                item_embeddings=self.get_output_embeddings().weight,
-                num_negative_samples=256,
+                # item_embeddings=self.get_output_embeddings().weight,  # 这里是一个危险的设计，LLM能够将lm_head的参数作为item_embeddings，但我们还没做到
+                # num_negative_samples=256,
                 **kwargs
             )
-            # 在训练模式下，我们返回的 logits 实际上是 hidden_states，
-            # 因为 loss 才是重点，logits 本身不会被用到。
-            logits = hidden_states 
 
         # 路径2：推理/生成时 (self.training is False 或没有提供 labels)
         else:
-            # 完整功能的推理路径
-            # 这里我们执行昂贵但必要的 lm_head 计算，以获得标准的 logits
+            # 评估模式
             logits = self.lm_head(hidden_states)
-            logits = logits.float()
+            logits = logits[:, -1, :].float()
+            if labels is not None:
+                # --- [这才是真正的核心修正] ---
+                loss_fct = CrossEntropyLoss()
+                
+                # 将 logits 和 labels 都展平以对齐
+                # logits: [batch, seq, vocab] -> [batch * seq, vocab]
+                # labels: [batch, seq] -> [batch * seq]
+                flat_logits = logits.view(-1, self.config.vocab_size)
+                flat_labels = labels.view(-1)
+                
+                # CrossEntropyLoss 会自动忽略所有 flat_labels 中值为 -100 的位置
+                loss = loss_fct(flat_logits, flat_labels)
 
         return CausalLMOutputWithPast(
             loss=loss,

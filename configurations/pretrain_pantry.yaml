@@ -1,14 +1,15 @@
 ### model
-# model_name_or_path: /data/kfwang/llama-3-8b-Instruct
+model_name_or_path: /home/kfwang/20250613Rec-Factory/try_train/llama-rec-checkpoints/final
 
 ### method
-stage: pt
+stage: sft
 do_train: true
-finetuning_type: lora
+finetuning_type: full
 lora_target: all
 
 ### dataset
 dataset: pantry_llama_pt_format_try
+template: llama-rec
 cutoff_len: 1024
 max_samples: 1000
 overwrite_cache: true
@@ -24,9 +25,9 @@ overwrite_output_dir: true
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
-learning_rate: 1.0e-4
-num_train_epochs: 1.0
+learning_rate: 1.0e-5
+num_train_epochs: 10.0
 lr_scheduler_type: cosine
-warmup_ratio: 0.1
+warmup_ratio: 0.0
 bf16: true
 ddp_timeout: 180000000

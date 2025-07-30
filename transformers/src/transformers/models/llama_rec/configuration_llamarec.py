@@ -23,7 +23,7 @@ from ...configuration_utils import PretrainedConfig
 from ...modeling_rope_utils import rope_config_validation
 
 
-class LlamaConfig(PretrainedConfig):
+class LlamaRecConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`LlamaModel`]. It is used to instantiate an LLaMA
     model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
@@ -140,7 +140,7 @@ class LlamaConfig(PretrainedConfig):
     >>> configuration = model.config
     ```"""
 
-    model_type = "llama"
+    model_type = "llama-rec"
     keys_to_ignore_at_inference = ["past_key_values"]
     # Default tensor parallel plan for base model `LlamaModel`
     base_model_tp_plan = {
@@ -222,4 +222,4 @@ class LlamaConfig(PretrainedConfig):
         )
 
 
-__all__ = ["LlamaConfig"]
+__all__ = ["LlamaRecConfig"]

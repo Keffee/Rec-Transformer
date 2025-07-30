@@ -41,7 +41,7 @@ from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from ...processing_utils import Unpack
 from ...pytorch_utils import ALL_LAYERNORM_LAYERS
 from ...utils import LossKwargs, auto_docstring, can_return_tuple, is_torch_flex_attn_available, logging
-from .configuration_llama import LlamaConfig
+from .configuration_llamarec import LlamaRecConfig
 
 
 if is_torch_flex_attn_available():
@@ -56,7 +56,7 @@ logger = logging.get_logger(__name__)
 
 
 @use_kernel_forward_from_hub("RMSNorm")
-class LlamaRMSNorm(nn.Module):
+class LlamaRecRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
         LlamaRMSNorm is equivalent to T5LayerNorm
@@ -76,11 +76,11 @@ class LlamaRMSNorm(nn.Module):
         return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
 
 
-ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm)
+ALL_LAYERNORM_LAYERS.append(LlamaRecRMSNorm)
 
 
-class LlamaRotaryEmbedding(nn.Module):
-    def __init__(self, config: LlamaConfig, device=None):
+class LlamaRecRotaryEmbedding(nn.Module):
+    def __init__(self, config: LlamaRecConfig, device=None):
         super().__init__()
         # BC: "rope_type" was originally "type"
         if hasattr(config, "rope_scaling") and config.rope_scaling is not None:
@@ -147,7 +147,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     return q_embed, k_embed
 
 
-class LlamaMLP(nn.Module):
+class LlamaRecMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -201,10 +201,10 @@ def eager_attention_forward(
     return attn_output, attn_weights
 
 
-class LlamaAttention(nn.Module):
+class LlamaRecAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: LlamaConfig, layer_idx: int):
+    def __init__(self, config: LlamaRecConfig, layer_idx: int):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -278,16 +278,16 @@ class LlamaAttention(nn.Module):
         return attn_output, attn_weights
 
 
-class LlamaDecoderLayer(GradientCheckpointingLayer):
-    def __init__(self, config: LlamaConfig, layer_idx: int):
+class LlamaRecDecoderLayer(GradientCheckpointingLayer):
+    def __init__(self, config: LlamaRecConfig, layer_idx: int):
         super().__init__()
         self.hidden_size = config.hidden_size
 
-        self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
+        self.self_attn = LlamaRecAttention(config=config, layer_idx=layer_idx)
 
-        self.mlp = LlamaMLP(config)
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.mlp = LlamaRecMLP(config)
+        self.input_layernorm = LlamaRecRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRecRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
@@ -332,11 +332,11 @@ class LlamaDecoderLayer(GradientCheckpointingLayer):
 
 
 @auto_docstring
-class LlamaPreTrainedModel(PreTrainedModel):
-    config_class = LlamaConfig
+class LlamaRecPreTrainedModel(PreTrainedModel):
+    config_class = LlamaRecConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
-    _no_split_modules = ["LlamaDecoderLayer"]
+    _no_split_modules = ["LlamaRecDecoderLayer"]
     _skip_keys_device_placement = ["past_key_values"]
     _supports_flash_attn_2 = True
     _supports_sdpa = True
@@ -356,23 +356,23 @@ class LlamaPreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, LlamaRMSNorm):
+        elif isinstance(module, LlamaRecRMSNorm):
             module.weight.data.fill_(1.0)
 
 
 @auto_docstring
-class LlamaModel(LlamaPreTrainedModel):
-    def __init__(self, config: LlamaConfig):
+class LlamaRecModel(LlamaRecPreTrainedModel):
+    def __init__(self, config: LlamaRecConfig):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+            [LlamaRecDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = LlamaRotaryEmbedding(config=config)
+        self.norm = LlamaRecRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.rotary_emb = LlamaRecRotaryEmbedding(config=config)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
@@ -608,14 +608,14 @@ class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs): ...
 
 
 @auto_docstring
-class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
+class LlamaRecForCausalLM(LlamaRecPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
     _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
 
     def __init__(self, config):
         super().__init__(config)
-        self.model = LlamaModel(config)
+        self.model = LlamaRecModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -730,11 +730,11 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
     each row of the batch).
     """
 )
-class LlamaForSequenceClassification(LlamaPreTrainedModel):
+class LlamaRecForSequenceClassification(LlamaRecPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        self.model = LlamaModel(config)
+        self.model = LlamaRecModel(config)
         self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
 
         # Initialize weights and apply final processing
@@ -817,13 +817,13 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
 
 
 @auto_docstring
-class LlamaForQuestionAnswering(LlamaPreTrainedModel):
+class LlamaRecForQuestionAnswering(LlamaRecPreTrainedModel):
     base_model_prefix = "transformer"
 
     # Copied from transformers.models.bloom.modeling_bloom.BloomForQuestionAnswering.__init__ with Bloom->Llama
     def __init__(self, config):
         super().__init__(config)
-        self.transformer = LlamaModel(config)
+        self.transformer = LlamaRecModel(config)
         self.qa_outputs = nn.Linear(config.hidden_size, 2)
 
         # Initialize weights and apply final processing
@@ -881,11 +881,11 @@ class LlamaForQuestionAnswering(LlamaPreTrainedModel):
 
 
 @auto_docstring
-class LlamaForTokenClassification(LlamaPreTrainedModel):
+class LlamaRecForTokenClassification(LlamaRecPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        self.model = LlamaModel(config)
+        self.model = LlamaRecModel(config)
         if getattr(config, "classifier_dropout", None) is not None:
             classifier_dropout = config.classifier_dropout
         elif getattr(config, "hidden_dropout", None) is not None:
@@ -952,10 +952,10 @@ class LlamaForTokenClassification(LlamaPreTrainedModel):
 
 
 __all__ = [
-    "LlamaForCausalLM",
-    "LlamaModel",
-    "LlamaPreTrainedModel",
-    "LlamaForSequenceClassification",
-    "LlamaForQuestionAnswering",
-    "LlamaForTokenClassification",
+    "LlamaRecForCausalLM",
+    "LlamaRecModel",
+    "LlamaRecPreTrainedModel",
+    "LlamaRecForSequenceClassification",
+    "LlamaRecForQuestionAnswering",
+    "LlamaRecForTokenClassification",
 ]

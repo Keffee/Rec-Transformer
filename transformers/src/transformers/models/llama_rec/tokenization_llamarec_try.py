@@ -7,9 +7,10 @@ from datasets import Dataset
 # 为了方便，我们模拟一个 TrainingArguments 类来传递配置
 from dataclasses import dataclass, field
 
-from tokenizers import Tokenizer, decoders, models, pre_tokenizers, processors
+from tokenizers import Tokenizer, decoders, models, pre_tokenizers, processors, normalizers
 from tokenizers.models import WordLevel
-from tokenizers.pre_tokenizers import Split, Regex
+from tokenizers.pre_tokenizers import Split
+from tokenizers import Regex
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
@@ -74,24 +75,47 @@ def create_hybrid_item_tokenizer(dataset: Dataset, training_args: MockTrainingAr
     logging.info("Step 4: Initializing WordLevel tokenizer...")
     custom_tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="[UNK]"))
 
-    # --- 5. 设置 Regex 预分词器 (关键修改) ---
-    # 这个 Regex 会匹配所有连续的数字 (\d+)，并将它们作为独立的 Token。
-    # 它会自动忽略数字之间的任何非数字字符，例如 ", "。
-    # 这就是你想要的强大且灵活的分词方式！
-    logging.info("Step 5: Setting up Regex pre-tokenizer for '123, 456' format...")
-    custom_tokenizer.pre_tokenizer = Split(
-        pattern=Regex(r"(\d+)"), 
-        behavior="isolated"
-    )
+    # --- 步骤 5. 设置 Regex 预分词器 (关键修改) ---
+    logging.info("Step 5: Setting up Regex pre-tokenizer to ONLY capture digits...")
+    # 只保留匹配到的数字，丢弃所有其他字符
+    # custom_tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
+    #     pre_tokenizers.Split(pattern=Regex(r"\d+"), behavior="isolated"),
+    #     pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False) # 这是一个技巧，用于过滤掉非数字的 token 块
+    # ])
+
+    # 1. 定义一个 Normalizer，它会在分词前运行
+    #    这个 Normalizer 会完成所有的数据清洗工作
+    custom_tokenizer.normalizer = normalizers.Sequence([
+        # 步骤 A: 将所有不是数字(\d)也不是空白符(\s)的字符，替换成一个空格。
+        # e.g., '127, 385' -> '127  385'
+        normalizers.Replace(Regex(r"[^\d\s]+"), " "),
+        # 步骤 B: 将多个连续的空格合并成一个
+        normalizers.Replace(Regex(r"\s+"), " "),
+        # 步骤 C: 去掉字符串首尾的空格
+        normalizers.Strip(),
+    ])
+
+    custom_tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
 
     # --- 6. 设置 Post-Processor (自动添加 BOS/EOS) ---
     logging.info("Step 6: Setting up post-processor to add BOS/EOS tokens...")
     custom_tokenizer.post_processor = TemplateProcessing(
         single="[BOS] $A [EOS]",
+        # single="$A",
         special_tokens=[
             ("[BOS]", vocab["[BOS]"]),
             ("[EOS]", vocab["[EOS]"]),
         ],
+    )
+
+    # --- [新增] 步骤 6.5: 在核心 Tokenizer 上配置 Padding ---
+    logging.info("Step 6.5: Enabling padding on the core tokenizer...")
+    custom_tokenizer.enable_padding(
+        direction="left", # 与 transformers 的 'padding_side' 保持一致
+        pad_id=vocab["[PAD]"],
+        pad_token="[PAD]",
+        length=training_args.max_length, # 可选：设置一个默认的 padding 长度
+        # strategy=PaddingStrategy.MAX_LENGTH # 可选：设置一个默认的 padding 策略
     )
     
     # --- 7. 保存并包装 ---
