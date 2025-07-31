@@ -168,7 +168,7 @@ class LlamaForRec(LlamaRecForCausalLM):
             **kwargs,
         )
 
-        hidden_states = outputs.last_hidden_state   # input_ids明明还是50维的，但是到了hidden_states就变成了49维
+        hidden_states = outputs.last_hidden_state   # input_ids长度在不断变化，非常奇怪
         loss = None
         
         # --- 这是关键的“双轨”逻辑 ---
@@ -176,7 +176,7 @@ class LlamaForRec(LlamaRecForCausalLM):
         # 路径1：训练时 (self.training is True 且提供了 labels)
         if self.training and labels is not None:
             # 高效的训练路径
-            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep # 这里的logits_to_keep是0，所以slice_indices是None，但是即使如此不知为何logits还是顺利被保存了，实际效果来看hidden_states_for_loss==logits
             # "logits" 变量临时存储 hidden_states，用于计算 loss
             
             logits = self.lm_head(hidden_states)

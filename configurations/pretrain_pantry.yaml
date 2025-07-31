@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: /home/kfwang/20250613Rec-Factory/try_train/llama-rec-checkpoints/final
+model_name_or_path: /root/20250613Rec-Factory/try_train/llama-rec-checkpoints/checkpoint-5816-单论ndcg来说效果最好的版本
 
 ### method
 stage: sft
