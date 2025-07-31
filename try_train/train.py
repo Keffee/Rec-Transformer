@@ -181,9 +181,9 @@ class CustomTrainer(Trainer):
 # --- 7. Main 函数 ---
 def main():
     # 参数定义
-    dataset_path = "/root/20250613Rec-Factory/data/amazon_pantry_from_qspan/llama_pt_format.json"
+    dataset_path = "/root/20250613Rec-Factory/data/amazon_SPIAO_from_qspan/llama_pt_format.json"
     output_dir = "/root/20250613Rec-Factory/try_train/llama-rec-checkpoints"
-    tokenizer_dir = "/root/20250613Rec-Factory/try_train/hybrid_item_tokenizer"
+    tokenizer_dir = "/root/20250613Rec-Factory/try_train/hybrid_item_tokenizer_SPIAO"
     max_seq_length = 128
     
     # 创建/加载 Tokenizer (使用全量数据)
@@ -234,7 +234,7 @@ def main():
 
     # 定义训练参数
     training_args = TrainingArguments(
-        output_dir=output_dir, per_device_train_batch_size=128, per_device_eval_batch_size=128,
+        output_dir=output_dir, per_device_train_batch_size=96, per_device_eval_batch_size=256,
         eval_accumulation_steps=10, gradient_accumulation_steps=1, learning_rate=5e-4,
         num_train_epochs=100, lr_scheduler_type="cosine", warmup_ratio=0,
         logging_dir=f"{output_dir}/logs", logging_steps=100, save_strategy="epoch",

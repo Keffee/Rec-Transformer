@@ -99,14 +99,15 @@ def create_hybrid_item_tokenizer(dataset: Dataset, training_args: MockTrainingAr
 
     # --- 6. 设置 Post-Processor (自动添加 BOS/EOS) ---
     logging.info("Step 6: Setting up post-processor to add BOS/EOS tokens...")
-    custom_tokenizer.post_processor = TemplateProcessing(
-        single="[BOS] $A [EOS]",
-        # single="$A",
-        special_tokens=[
-            ("[BOS]", vocab["[BOS]"]),
-            ("[EOS]", vocab["[EOS]"]),
-        ],
-    )
+    # 下面这段暂时删除，将来想要添加什么新token在这里加就行，
+    # custom_tokenizer.post_processor = TemplateProcessing(
+    #     single="[BOS] $A [EOS]",
+    #     # single="$A",
+    #     special_tokens=[
+    #         ("[BOS]", vocab["[BOS]"]),
+    #         ("[EOS]", vocab["[EOS]"]),
+    #     ],
+    # )
 
     # --- [新增] 步骤 6.5: 在核心 Tokenizer 上配置 Padding ---
     logging.info("Step 6.5: Enabling padding on the core tokenizer...")
