@@ -185,32 +185,68 @@ def main():
     output_dir = "/zhdd/home/kfwang/20250613Rec-Factory/try_train/llama-rec-checkpoints"
     tokenizer_dir = "/zhdd/home/kfwang/20250613Rec-Factory/try_train/hybrid_item_tokenizer_SPIAO"
     max_seq_length = 128
+
+    # --- 关键改动点 1：将 TrainingArguments 的定义提前 ---
+    # 因为我们需要用它来判断当前是否是主进程
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        per_device_train_batch_size=224,
+        per_device_eval_batch_size=256,
+        eval_accumulation_steps=10,
+        gradient_accumulation_steps=1,
+        learning_rate=5e-4,
+        num_train_epochs=20,
+        lr_scheduler_type="cosine",
+        warmup_ratio=0,
+        logging_dir=f"{output_dir}/logs",
+        logging_steps=100,
+        save_strategy="epoch",
+        eval_strategy="epoch",
+        save_total_limit=20,
+        fp16=True,
+        report_to="tensorboard",
+        remove_unused_columns=False,
+        # ddp_find_unused_parameters=False, # 如果遇到DDP相关报错，可以尝试取消此行注释
+    )
+
+    # --- 关键改动点 2：使用 local_rank 判断，保护文件操作 ---
+    # local_rank == 0 代表这是主进程。在单卡训练时，local_rank 默认为 -1。
+    # 这个 if 块确保了里面的代码（下载/加载数据、创建分词器）只会被执行一次。
+    if training_args.local_rank == 0 or training_args.local_rank == -1:
+        print("This is the main process (rank 0). Running data preprocessing and tokenizer creation...")
+        raw_dataset = load_dataset("json", data_files=dataset_path, split="train")
+        tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
+        if not os.path.exists(tokenizer_file):
+            print("Tokenizer not found. Creating a new one from the full dataset...")
+            def text_to_int_list(example):
+                example['item_sequence'] = [int(i.strip()) for i in example['text'].split(',') if i.strip()]
+                return example
+            temp_dataset_with_list = raw_dataset.map(text_to_int_list, remove_columns=["text"])
+            mock_args = MockTrainingArguments(output_dir=tokenizer_dir, max_length=max_seq_length)
+            tokenizer = create_hybrid_item_tokenizer(dataset=temp_dataset_with_list, training_args=mock_args)
     
-    # 创建/加载 Tokenizer (使用全量数据)
-    tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
+    # --- 关键改动点 3：让其他进程等待主进程 ---
+    # 使用 torch.distributed.barrier() 可以让其他子进程（rank > 0）在这里等待，
+    # 直到主进程（rank 0）执行完上面的 if 块。这样可以确保当子进程继续执行时，
+    # 数据集和分词器文件已经准备好了。
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
+    print(f"Process with local_rank: {training_args.local_rank} is loading tokenizer and dataset...")
+    # 现在，所有进程都可以安全地从磁盘加载已经准备好的分词器和缓存的数据集
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
     raw_dataset = load_dataset("json", data_files=dataset_path, split="train")
-    if not os.path.exists(tokenizer_file):
-        print("Tokenizer not found. Creating a new one from the full dataset...")
-        def text_to_int_list(example):
-            example['item_sequence'] = [int(i.strip()) for i in example['text'].split(',') if i.strip()]
-            return example
-        temp_dataset_with_list = raw_dataset.map(text_to_int_list, remove_columns=["text"])
-        mock_args = MockTrainingArguments(output_dir=tokenizer_dir, max_length=max_seq_length)
-        tokenizer = create_hybrid_item_tokenizer(dataset=temp_dataset_with_list, training_args=mock_args)
-    else:
-        print("Found existing tokenizer. Loading it...")
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
-    
-    # 健壮性检查
+
+    # 健壮性检查 (所有进程都执行)
     if tokenizer.pad_token_id is None: tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("[PAD]")
     if tokenizer.bos_token_id is None: tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("[BOS]")
     assert tokenizer.pad_token_id is not None and tokenizer.bos_token_id is not None
     print(f"Final check - pad_token_id: {tokenizer.pad_token_id}, bos_token_id: {tokenizer.bos_token_id}")
 
-    # --- 5. 预处理数据集并划分 ---
+    # 预处理数据集并划分 (所有进程都执行，datasets库会自动使用缓存)
     print("Preprocessing and splitting the dataset...")
     processed_dataset = raw_dataset.map(
-        final_preprocess_function, # 确保是这个函数
+        final_preprocess_function,
         batched=True,
         remove_columns=raw_dataset.column_names,
         num_proc=4,
@@ -220,7 +256,7 @@ def main():
     eval_dataset = split_dataset["test"]
     print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
 
-    # 创建模型
+    # 创建模型 (所有进程都执行)
     print("Creating LlamaRecForCausalLM model from scratch...")
     config = LlamaRecConfig(
         model_type=MODEL_TYPE, vocab_size=len(tokenizer), hidden_size=256,
@@ -232,21 +268,11 @@ def main():
     model = LlamaRecForCausalLM(config)
     print(f"Model created with {model.num_parameters() / 1e6:.2f} M parameters.")
 
-    # 定义训练参数
-    training_args = TrainingArguments(
-        output_dir=output_dir, per_device_train_batch_size=256, per_device_eval_batch_size=256,
-        eval_accumulation_steps=10, gradient_accumulation_steps=1, learning_rate=5e-4,
-        num_train_epochs=20, lr_scheduler_type="cosine", warmup_ratio=0,
-        logging_dir=f"{output_dir}/logs", logging_steps=100, save_strategy="epoch",
-        eval_strategy="epoch", save_total_limit=20, fp16=True, report_to="tensorboard",
-        remove_unused_columns=False,
-    )
-    
-    # 定义数据整理器
+    # 定义数据整理器 (所有进程都执行)
     train_collator = TrainDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
     eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
 
-    # 实例化 Trainer
+    # 实例化 Trainer (所有进程都执行)
     trainer = CustomTrainer(
         model=model, args=training_args, train_dataset=train_dataset,
         eval_dataset=eval_dataset, tokenizer=tokenizer, data_collator=train_collator,
@@ -254,14 +280,17 @@ def main():
     )
 
     # 开始训练
+    # Trainer 会自动处理 DDP 模型封装，你无需手动操作
     print("Starting training with proper Leave-One-Out evaluation...")
     trainer.train()
 
-    # 保存最终模型
+    # 保存最终模型 (Trainer 默认只在主进程保存)
     final_model_path = os.path.join(output_dir, "final")
     print(f"Training complete. Saving final model to {final_model_path}")
     trainer.save_model(final_model_path)
-    tokenizer.save_pretrained(final_model_path)
+    # 确保分词器也只保存一次
+    if trainer.is_world_process_zero():
+        tokenizer.save_pretrained(final_model_path)
     print("All operations complete!")
 
 if __name__ == "__main__":

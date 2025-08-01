@@ -16,11 +16,27 @@
             "name": "try_train",
             "type": "debugpy",
             "request": "launch",
-            "program": "~/20250613Rec-Factory/try_train/train.py",
+            "program": "~/20250613Rec-Factory/try_train/train_single.py",
             "console": "integratedTerminal",
             "env": {
                 "CUDA_VISIBLE_DEVICES": "3",
             },
+        },
+        {
+            "name": "Debug LLaMA-Factory Pretrain",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "llamafactory.cli", // 使用模块化启动，这是关键
+            "args": [
+                "train",
+                "configurations/pretrain_pantry.yaml"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3"
+            },
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}", // 确保工作目录是你的项目根目录
+            "justMyCode": true // 建议初次调试时设为true，只在你的代码中断点；如果需要进入库代码，设为false
         }
     ]
 }
