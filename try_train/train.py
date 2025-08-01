@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 
 # 导入你的自定义代码
 from transformers.models.llama_rec.tokenization_llamarec_try import create_hybrid_item_tokenizer, MockTrainingArguments 
-from transformers.models.llama_rec.modeling_llamarec_try import LlamaForRec, LlamaRecConfig
+from transformers.models.llama_rec.modeling_llamarec import LlamaRecForCausalLM, LlamaRecConfig
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -121,7 +121,7 @@ def compute_metrics(eval_preds: EvalPrediction):    # 经过逐行比对，这�
     # labels_matrix: [batch_size, seq_len]
     
     # 我们只关心最后一个时间步的 logit
-    last_step_logits = torch.from_numpy(logits)
+    last_step_logits = torch.from_numpy(logits[:, -1, :])
     
     # 从 labels_matrix 中提取出有效的标签
     # 有效标签是不等于 -100 的值
@@ -181,9 +181,9 @@ class CustomTrainer(Trainer):
 # --- 7. Main 函数 ---
 def main():
     # 参数定义
-    dataset_path = "/root/20250613Rec-Factory/data/amazon_SPIAO_from_qspan/llama_pt_format.json"
-    output_dir = "/root/20250613Rec-Factory/try_train/llama-rec-checkpoints"
-    tokenizer_dir = "/root/20250613Rec-Factory/try_train/hybrid_item_tokenizer_SPIAO"
+    dataset_path = "/zhdd/home/kfwang/20250613Rec-Factory/data/amazon_SPIAO_from_qspan/llama_pt_format.json"
+    output_dir = "/zhdd/home/kfwang/20250613Rec-Factory/try_train/llama-rec-checkpoints"
+    tokenizer_dir = "/zhdd/home/kfwang/20250613Rec-Factory/try_train/hybrid_item_tokenizer_SPIAO"
     max_seq_length = 128
     
     # 创建/加载 Tokenizer (使用全量数据)
@@ -221,7 +221,7 @@ def main():
     print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
 
     # 创建模型
-    print("Creating LlamaForRec model from scratch...")
+    print("Creating LlamaRecForCausalLM model from scratch...")
     config = LlamaRecConfig(
         model_type=MODEL_TYPE, vocab_size=len(tokenizer), hidden_size=256,
         intermediate_size=512, num_hidden_layers=4, num_attention_heads=4,
@@ -229,14 +229,14 @@ def main():
         pad_token_id=tokenizer.pad_token_id, bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
-    model = LlamaForRec(config)
+    model = LlamaRecForCausalLM(config)
     print(f"Model created with {model.num_parameters() / 1e6:.2f} M parameters.")
 
     # 定义训练参数
     training_args = TrainingArguments(
-        output_dir=output_dir, per_device_train_batch_size=96, per_device_eval_batch_size=256,
+        output_dir=output_dir, per_device_train_batch_size=256, per_device_eval_batch_size=256,
         eval_accumulation_steps=10, gradient_accumulation_steps=1, learning_rate=5e-4,
-        num_train_epochs=100, lr_scheduler_type="cosine", warmup_ratio=0,
+        num_train_epochs=20, lr_scheduler_type="cosine", warmup_ratio=0,
         logging_dir=f"{output_dir}/logs", logging_steps=100, save_strategy="epoch",
         eval_strategy="epoch", save_total_limit=20, fp16=True, report_to="tensorboard",
         remove_unused_columns=False,
