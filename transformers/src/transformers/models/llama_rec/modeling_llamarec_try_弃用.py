@@ -132,8 +132,39 @@ class LlamaForRec(LlamaRecForCausalLM):
     """
 
     @property
-    def loss_function(self):
-        return ForRecLoss
+    def loss_function(
+        self,
+        logits: torch.Tensor,  # 形状为 (batch_size, seq_len, vocab_size)
+        labels: torch.Tensor,
+        ignore_index: int = -100,
+        shift_labels: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        
+        # 1. 移位标签，这是语言模型/序列推荐的标准操作
+        if shift_labels is None:
+            # 预测第 n 个 token 需要使用前 n-1 个 token 的信息
+            # 因此 logits 的第 n-1 个位置对应 labels 的第 n 个位置
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+        else:
+            # 如果已经手动移位，直接使用
+            shift_logits = logits.contiguous()
+            shift_labels = shift_labels.contiguous()
+
+        # 2. 展平数据以符合 CrossEntropyLoss 的输入要求
+        # CrossEntropyLoss 要求 logits 的形状是 (N, C) 和 labels 的形状是 (N)
+        # C 是类别总数，这里就是 vocab_size
+        vocab_size = shift_logits.size(-1)
+        
+        loss = nn.functional.cross_entropy(
+            input=shift_logits.view(-1, vocab_size), 
+            target=shift_labels.view(-1), 
+            ignore_index=ignore_index,
+            reduction="mean" # 对批次中的所有有效 token 的损失取平均
+        )
+
+        return loss
 
     def forward(
         self,

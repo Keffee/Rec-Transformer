@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: /root/20250613Rec-Factory/try_train/llama-rec-checkpoints/checkpoint-5816-单论ndcg来说效果最好的版本
+model_name_or_path: try_train/llama-rec-checkpoints/checkpoint-5816-单论ndcg来说效果最好的版本
 
 ### method
 stage: sft
@@ -8,7 +8,7 @@ finetuning_type: full
 lora_target: all
 
 ### dataset
-dataset: pantry_llama_pt_format_try
+dataset: amazon_pantry_from_qspan
 template: llama-rec
 cutoff_len: 1024
 max_samples: 1000

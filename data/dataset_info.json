@@ -1,0 +1,16 @@
+{
+  "amazon_pantry_from_qspan": {
+    "file_name": "amazon_pantry_from_qspan/llama_leave_one_sft_format.json",
+    "columns": {
+      "prompt": "instruction",
+      "response": "output"
+    }
+  },
+  "amazon_SPIAO_from_qspan": {
+    "file_name": "amazon_SPIAO_from_qspan/llama_leave_one_sft_format.json",
+    "columns": {
+      "prompt": "instruction",
+      "response": "output"
+    }
+  }
+}

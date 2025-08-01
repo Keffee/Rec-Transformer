@@ -607,6 +607,48 @@ class LlamaRecModel(LlamaRecPreTrainedModel):
 class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs): ...
 
 
+def ForRecLoss(
+    logits: torch.Tensor, # 形状为 (batch_size, seq_len, vocab_size)
+    labels: torch.Tensor,
+    ignore_index: int = -100,
+    shift_labels: Optional[torch.Tensor] = None,
+    # item_embeddings 和 num_negative_samples 不再需要了
+    training: bool = False,
+    **kwargs,
+) -> torch.Tensor:
+    
+    
+    # 突然发现把training和eval合并之后好像数据格式不太一样
+    if training:
+        # 1. 移位标签，这是语言模型/序列推荐的标准操作
+        if shift_labels is None:
+            # 预测第 n 个 token 需要使用前 n-1 个 token 的信息
+            # 因此 logits 的第 n-1 个位置对应 labels 的第 n 个位置
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+        else:
+            # 如果已经手动移位，直接使用
+            shift_logits = logits.contiguous()
+            shift_labels = shift_labels.contiguous()
+    else:
+        shift_logits = logits[..., -1, :].contiguous()
+        shift_labels = labels.contiguous()
+
+    # 2. 展平数据以符合 CrossEntropyLoss 的输入要求
+    # CrossEntropyLoss 要求 logits 的形状是 (N, C) 和 labels 的形状是 (N)
+    # C 是类别总数，这里就是 vocab_size
+    vocab_size = shift_logits.size(-1)
+    
+
+    loss = nn.functional.cross_entropy(
+        input=shift_logits.view(-1, vocab_size), 
+        target=shift_labels.view(-1), 
+        ignore_index=ignore_index,
+        reduction="mean" # 对批次中的所有有效 token 的损失取平均
+    )
+
+    return loss
+
 @auto_docstring
 class LlamaRecForCausalLM(LlamaRecPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
@@ -639,6 +681,10 @@ class LlamaRecForCausalLM(LlamaRecPreTrainedModel, GenerationMixin):
 
     def get_decoder(self):
         return self.model
+
+    @property
+    def loss_function(self):
+        return ForRecLoss
 
     @can_return_tuple
     @auto_docstring
@@ -705,7 +751,13 @@ class LlamaRecForCausalLM(LlamaRecPreTrainedModel, GenerationMixin):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            loss = self.loss_function(
+                logits=logits, 
+                labels=labels,
+                vocab_size=self.config.vocab_size, 
+                training=self.training,
+                **kwargs
+            )
 
         return CausalLMOutputWithPast(
             loss=loss,

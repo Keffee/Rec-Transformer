@@ -623,6 +623,14 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
 
 
 register_template(
+    name="llama-rec",
+    format_user=StringFormatter(slots=["{{content}}"]),
+    format_assistant=StringFormatter(slots=["{{content}}"]),
+    format_system=StringFormatter(slots=["{{content}}"]),
+    format_function=FunctionFormatter(slots=["{{content}}"], tool_format="default"),
+)
+
+register_template(
     name="alpaca",
     format_user=StringFormatter(slots=["### Instruction:\n{{content}}\n\n### Response:\n"]),
     format_assistant=StringFormatter(slots=["{{content}}", {"eos_token"}, "\n\n"]),
