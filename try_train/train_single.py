@@ -9,6 +9,8 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import yaml
+import argparse
 
 # 导入你的自定义代码
 from transformers.models.llama_rec.tokenization_llamarec_try import create_hybrid_item_tokenizer, MockTrainingArguments 
@@ -115,6 +117,7 @@ class EvalDataCollator:
 
 import time
 # --- 5. 评估指标计算函数 ---
+# 这个目前先不用，之前一直是这个地方卡手了，改进一下
 def compute_metrics(eval_preds: EvalPrediction):
     logits, labels_matrix = eval_preds
     
@@ -161,6 +164,86 @@ def compute_metrics(eval_preds: EvalPrediction):
     
     return metrics
 
+# 改进成下面这个：
+class StreamingMetricsCalculator:
+    """
+    一个支持流式评估的指标计算器，专为推荐任务设计。
+
+    该类通过在每个评估批次上计算并累积轻量级的“排名(ranks)”信息，
+    避免了在内存中保留巨大的 logits 张量，从而解决了评估过程中的性能瓶颈和卡顿问题。
+    它与 Hugging Face Trainer 的 `batch_eval_metrics=True` 参数协同工作。
+    """
+    def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
+        """
+        初始化计算器。
+
+        Args:
+            k_values (List[int]): 用于计算 HR@k 和 NDCG@k 的 k 值列表。
+        """
+        self.k_values = k_values
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # self.all_ranks 将在 CPU 上累积，以节省 GPU 显存
+        self.all_ranks: List[torch.Tensor] = []
+
+    def __call__(self, eval_preds: EvalPrediction, compute_result: bool) -> Dict[str, float]:
+        """
+        Trainer 在每个评估步骤调用的核心方法。
+
+        Args:
+            eval_preds (EvalPrediction): 包含当前批次的 predictions 和 label_ids 的对象。
+            compute_result (bool): 由 Trainer 传入的标志。
+                                   如果为 False，则只处理并累积当前批次。
+                                   如果为 True (在最后一个批次)，则计算并返回最终指标。
+        """
+        # --- 1. 每个批次都会执行的部分：计算并累积 Ranks ---
+        logits, labels_matrix = eval_preds.predictions, eval_preds.label_ids
+
+        # 将当前批次的数据移动到GPU进行快速计算
+        last_step_logits = logits[:, -1, :]
+        labels = labels_matrix.view(-1)
+        
+        valid_mask = labels != -100
+        labels = labels[valid_mask]
+        last_step_logits = last_step_logits[valid_mask]
+
+        # 如果这个批次没有有效标签，则直接跳过
+        if labels.numel() > 0:
+            # 在 GPU 上高效计算排名
+            sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
+            ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
+            
+            # 将计算出的 ranks (小张量) 移回 CPU 并添加到列表中
+            self.all_ranks.append(ranks.cpu())
+
+        # --- 2. 仅在最后一个批次执行的部分：计算最终指标 ---
+        if compute_result:
+            if not self.all_ranks:
+                return {} # 如果整个评估过程都没有有效标签
+
+            # 将所有批次的 ranks 拼接成一个大张量
+            final_ranks = torch.cat(self.all_ranks).float()
+            
+            metrics = {}
+            for k in self.k_values:
+                in_top_k = final_ranks <= k
+                hr_k = in_top_k.float().mean().item()
+                metrics[f"HR@{k}"] = round(hr_k, 4)
+                
+                # 计算 NDCG
+                ndcg_k = (1.0 / torch.log2(final_ranks + 1.0)).where(in_top_k, 0.0).mean().item()
+                metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
+
+            metrics["MRR"] = round((1.0 / final_ranks).mean().item(), 4)
+            
+            # **非常重要**：清空状态，为下一次可能的评估做准备
+            self.all_ranks = []
+            
+            return metrics
+        
+        # 如果不是最后一步，返回空字典
+        return {}
+
+
 # --- 6. 自定义 Trainer ---
 # 这个 Trainer 可以确保评估时使用我们自定义的 EvalDataCollator
 class CustomTrainer(Trainer):
@@ -182,86 +265,120 @@ class CustomTrainer(Trainer):
             pin_memory=self.args.dataloader_pin_memory,
         )
 
-# --- 7. Main 函数 ---
+# --- 7. Main 函数 (从 YAML 读取配置的最终版本) ---
 def main():
-    # 参数定义
-    dataset_path = "/zhdd/home/kfwang/20250613Rec-Factory/data/amazon_pantry_from_qspan/llama_pt_format.json"
-    output_dir = "/zhdd/home/kfwang/20250613Rec-Factory/try_train/llama-rec_pantry-checkpoints"
-    tokenizer_dir = "/zhdd/home/kfwang/20250613Rec-Factory/try_train/hybrid_item_tokenizer_pantry"
-    max_seq_length = 128
-    
-    # 创建/加载 Tokenizer (使用全量数据)
+    # <<< 新增: 解析命令行参数以获取配置文件路径 >>>
+    parser = argparse.ArgumentParser(description="Train a LlamaRec model using a YAML config file.")
+    parser.add_argument("--config", type=str, required=True, help="Name of the config file to use. For example: pantry")
+    cli_args = parser.parse_args()
+
+    # <<< 新增: 读取并解析 YAML 配置文件 >>>
+    print(f"Loading configuration from: {cli_args.config}")
+    default_config_path = "/home/kfwang/20250613Rec-Factory/try_train/train_config/"
+    with open(default_config_path+cli_args.config+'.yaml', 'r') as f:
+        config_data = yaml.safe_load(f)
+
+    # <<< 新增: 从解析的数据中提取配置组 >>>
+    paths_config = config_data['paths']
+    model_params = config_data['model_params']
+    training_args_dict = config_data['training_args']
+    dataset_split_config = config_data['dataset_split']
+
+    # 使用从配置中读取的参数
+    dataset_path = paths_config['dataset_path']
+    output_dir = paths_config['output_dir']
+    tokenizer_dir = paths_config['tokenizer_dir']
+    max_seq_length = model_params['max_seq_length']
+
+    # <<< MODIFIED: Tokenizer 创建逻辑现在使用配置中的路径 >>>
     tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
     raw_dataset = load_dataset("json", data_files=dataset_path, split="train")
+    # (这部分创建 tokenizer 的逻辑不变，只是使用了来自 config 的变量)
     if not os.path.exists(tokenizer_file):
         print("Tokenizer not found. Creating a new one from the full dataset...")
         def text_to_int_list(example):
             example['item_sequence'] = [int(i.strip()) for i in example['text'].split(',') if i.strip()]
             return example
         temp_dataset_with_list = raw_dataset.map(text_to_int_list, remove_columns=["text"])
+        # 注意: MockTrainingArguments 现在也使用配置中的值
         mock_args = MockTrainingArguments(output_dir=tokenizer_dir, max_length=max_seq_length)
         tokenizer = create_hybrid_item_tokenizer(dataset=temp_dataset_with_list, training_args=mock_args)
     else:
         print("Found existing tokenizer. Loading it...")
         tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
-    
-    # 健壮性检查
+
+    # (健壮性检查逻辑不变)
     if tokenizer.pad_token_id is None: tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("[PAD]")
     if tokenizer.bos_token_id is None: tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("[BOS]")
     assert tokenizer.pad_token_id is not None and tokenizer.bos_token_id is not None
     print(f"Final check - pad_token_id: {tokenizer.pad_token_id}, bos_token_id: {tokenizer.bos_token_id}")
 
-    # --- 5. 预处理数据集并划分 ---
+    # <<< MODIFIED: 数据集划分现在使用配置中的参数 >>>
     print("Preprocessing and splitting the dataset...")
     processed_dataset = raw_dataset.map(
-        final_preprocess_function, # 确保是这个函数
+        final_preprocess_function,
         batched=True,
         remove_columns=raw_dataset.column_names,
         num_proc=4,
     )
-    split_dataset = processed_dataset.train_test_split(test_size=0.1, seed=42)
+    split_dataset = processed_dataset.train_test_split(
+        test_size=dataset_split_config['test_size'], 
+        seed=dataset_split_config['seed']
+    )
     train_dataset = split_dataset["train"]
     eval_dataset = split_dataset["test"]
     print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
 
-    # 创建模型
+    # <<< MODIFIED: LlamaRecConfig 现在从字典动态构建 >>>
     print("Creating LlamaRecForCausalLM model from scratch...")
     config = LlamaRecConfig(
-        model_type=MODEL_TYPE, vocab_size=len(tokenizer), hidden_size=256,
-        intermediate_size=512, num_hidden_layers=4, num_attention_heads=4,
-        max_position_embeddings=max_seq_length, rms_norm_eps=1e-6, use_cache=False,
-        pad_token_id=tokenizer.pad_token_id, bos_token_id=tokenizer.bos_token_id,
+        # 从 model_params 读取架构参数
+        hidden_size=model_params['hidden_size'],
+        intermediate_size=model_params['intermediate_size'],
+        num_hidden_layers=model_params['num_hidden_layers'],
+        num_attention_heads=model_params['num_attention_heads'],
+        max_position_embeddings=max_seq_length,
+        rms_norm_eps=model_params['rms_norm_eps'],
+        # 运行时确定的参数
+        model_type=MODEL_TYPE,
+        vocab_size=len(tokenizer),
+        use_cache=False,
+        pad_token_id=tokenizer.pad_token_id,
+        bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
     model = LlamaRecForCausalLM(config)
     print(f"Model created with {model.num_parameters() / 1e6:.2f} M parameters.")
 
-    # 定义训练参数
-    training_args = TrainingArguments(
-        output_dir=output_dir, per_device_train_batch_size=224, per_device_eval_batch_size=256,
-        eval_accumulation_steps=10, gradient_accumulation_steps=1, learning_rate=5e-4,
-        num_train_epochs=20, lr_scheduler_type="cosine", warmup_ratio=0,
-        logging_dir=f"{output_dir}/logs", logging_steps=100, save_strategy="epoch",
-        eval_strategy="epoch", save_total_limit=20, fp16=True, report_to="tensorboard",
-        remove_unused_columns=False,
-    )
-    
-    # 定义数据整理器
+    # <<< MODIFIED: TrainingArguments 现在从字典动态构建 >>>
+    # 将 YAML 中未包含的、依赖于路径的参数添加到字典中
+    training_args_dict['output_dir'] = output_dir
+    training_args_dict['logging_dir'] = os.path.join(output_dir, 'logs')
+    # 使用字典解包来创建 TrainingArguments 实例
+    training_args = TrainingArguments(**training_args_dict)
+
+    # (DataCollator 和 Trainer 的实例化逻辑不变)
     train_collator = TrainDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
     eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
+    
+    # 假设你已经有了上一轮我们讨论的 StreamingMetricsCalculator 类
+    streaming_metrics_calculator = StreamingMetricsCalculator() 
 
-    # 实例化 Trainer
     trainer = CustomTrainer(
-        model=model, args=training_args, train_dataset=train_dataset,
-        eval_dataset=eval_dataset, tokenizer=tokenizer, data_collator=train_collator,
-        compute_metrics=compute_metrics, eval_collator=eval_collator,
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        tokenizer=tokenizer,
+        data_collator=train_collator,
+        compute_metrics=streaming_metrics_calculator,
+        eval_collator=eval_collator,
     )
 
-    # 开始训练
+    # (训练和保存逻辑不变)
     print("Starting training with proper Leave-One-Out evaluation...")
     trainer.train()
 
-    # 保存最终模型
     final_model_path = os.path.join(output_dir, "final")
     print(f"Training complete. Saving final model to {final_model_path}")
     trainer.save_model(final_model_path)

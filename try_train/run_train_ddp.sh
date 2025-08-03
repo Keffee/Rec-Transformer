@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=0,3 torchrun --nproc_per_node=2 train_new_try.py
+CUDA_VISIBLE_DEVICES=0,1,3 torchrun --nproc_per_node=3 train_ddp.py --config SPIAO
