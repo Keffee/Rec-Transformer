@@ -4355,7 +4355,9 @@ class Trainer:
         observed_num_examples = 0
 
         # Main evaluation loop
+        import time
         for step, inputs in enumerate(dataloader):
+            time0 = time.time()
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -4370,7 +4372,6 @@ class Trainer:
             inputs_decode = (
                 self._prepare_input(inputs[main_input_name]) if "inputs" in args.include_for_metrics else None
             )
-
             if is_torch_xla_available():
                 xm.mark_step()
 
@@ -4399,7 +4400,6 @@ class Trainer:
                     all_labels.add(labels)
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
-
             if self.args.batch_eval_metrics:
                 if self.compute_metrics is not None and logits is not None and labels is not None:
                     is_last_step = self.accelerator.gradient_state.end_of_dataloader
@@ -4415,6 +4415,7 @@ class Trainer:
                 torch.cuda.empty_cache()
 
             # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+            # 现在就属这里最慢
             elif args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
                 all_losses.to_cpu_and_numpy()
                 all_preds.to_cpu_and_numpy()
@@ -4423,6 +4424,7 @@ class Trainer:
 
                 del losses, logits, labels, inputs
                 torch.cuda.empty_cache()
+
 
         # After all calls to `.gather_function`, reset to `gather_for_metrics`:
         self.gather_function = self.accelerator.gather_for_metrics
@@ -4450,7 +4452,6 @@ class Trainer:
                 num_samples = observed_num_examples
         if num_samples == 0 and observed_num_examples > 0:
             num_samples = observed_num_examples
-
         # Metrics!
         if (
             self.compute_metrics is not None
@@ -4542,14 +4543,12 @@ class Trainer:
         if return_loss is None:
             return_loss = self.can_return_loss
         loss_without_labels = True if len(self.label_names) == 0 and return_loss else False
-
         inputs = self._prepare_inputs(inputs)
         if ignore_keys is None:
             if hasattr(self.model, "config"):
                 ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", ["past_key_values"])
             else:
                 ignore_keys = []
-
         # labels may be popped when computing the loss (label smoothing for instance) so we grab them first.
         if has_labels or loss_without_labels:
             labels = nested_detach(tuple(inputs.get(name) for name in self.label_names))
@@ -4557,7 +4556,6 @@ class Trainer:
                 labels = labels[0]
         else:
             labels = None
-
         with torch.no_grad():
             if is_sagemaker_mp_enabled():
                 raw_outputs = smp_forward_only(model, inputs)
