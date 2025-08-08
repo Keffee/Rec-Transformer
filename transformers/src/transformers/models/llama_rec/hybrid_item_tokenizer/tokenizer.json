@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": {
+    "strategy": {
+      "Fixed": 512
+    },
+    "direction": "Left",
+    "pad_to_multiple_of": null,
+    "pad_id": 0,
+    "pad_type_id": 0,
+    "pad_token": "[PAD]"
+  },
+  "added_tokens": [],
+  "normalizer": {
+    "type": "Sequence",
+    "normalizers": [
+      {
+        "type": "Replace",
+        "pattern": {
+          "Regex": "[^\\d\\s]+"
+        },
+        "content": " "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "Regex": "\\s+"
+        },
+        "content": " "
+      },
+      {
+        "type": "Strip",
+        "strip_left": true,
+        "strip_right": true
+      }
+    ]
+  },
+  "pre_tokenizer": {
+    "type": "Whitespace"
+  },
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "WordLevel",
+    "vocab": {
+      "[PAD]": 0,
+      "[UNK]": 1,
+      "[BOS]": 2,
+      "[EOS]": 3,
+      "1": 4,
+      "42": 5,
+      "101": 6,
+      "888": 7,
+      "999": 8,
+      "2048": 9,
+      "5000": 10
+    },
+    "unk_token": "[UNK]"
+  }
+}

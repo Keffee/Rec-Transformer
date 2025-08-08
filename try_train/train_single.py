@@ -13,7 +13,7 @@ import yaml
 import argparse
 
 # 导入你的自定义代码
-from transformers.models.llama_rec.tokenization_llamarec_try import create_hybrid_item_tokenizer, MockTrainingArguments 
+from transformers.models.llama_rec.tokenization_llamarec import create_rq_code_tokenizer, MockTrainingArguments 
 from transformers.models.llama_rec.modeling_llamarec import LlamaRecForCausalLM, LlamaRecConfig
 from transformers import (
     AutoConfig,
@@ -47,11 +47,11 @@ class TrainDataCollator:
         self.max_length = max_length
 
     def __call__(self, examples: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
-        sequences_as_int = [e["sequence"] for e in examples]
-        sequences_as_str = [[str(item_id) for item_id in seq] for seq in sequences_as_int]
+        sequences = [e["text"] for e in examples]
+        # sequences_as_str = [[str(item_id) for item_id in seq] for seq in sequences_as_int]
 
         batch_dict = self.tokenizer(
-            sequences_as_str,
+            sequences,
             is_split_into_words=True,
             padding=True,
             truncation=True,
@@ -66,7 +66,7 @@ class TrainDataCollator:
         return batch_dict
 
 # --- [最终版] 评估数据整理器 ---
-class EvalDataCollator:
+class EvalDataCollator: # 模拟留一法，已弃用
     def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -118,7 +118,7 @@ class EvalDataCollator:
 import time
 # --- 5. 评估指标计算函数 ---
 # 这个目前先不用，之前一直是这个地方卡手了，改进一下
-def compute_metrics(eval_preds: EvalPrediction):
+def compute_metrics(eval_preds: EvalPrediction):    # 已弃用
     logits, labels_matrix = eval_preds
     
     # 检查是否有可用的 GPU
@@ -164,15 +164,8 @@ def compute_metrics(eval_preds: EvalPrediction):
     
     return metrics
 
-# 改进成下面这个：
-class StreamingMetricsCalculator:
-    """
-    一个支持流式评估的指标计算器，专为推荐任务设计。
-
-    该类通过在每个评估批次上计算并累积轻量级的“排名(ranks)”信息，
-    避免了在内存中保留巨大的 logits 张量，从而解决了评估过程中的性能瓶颈和卡顿问题。
-    它与 Hugging Face Trainer 的 `batch_eval_metrics=True` 参数协同工作。
-    """
+# 流式指标
+class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3要谨慎
     def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
         """
         初始化计算器。
@@ -182,25 +175,15 @@ class StreamingMetricsCalculator:
         """
         self.k_values = k_values
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # self.all_ranks 将在 CPU 上累积，以节省 GPU 显存
         self.all_ranks: List[torch.Tensor] = []
 
     def __call__(self, eval_preds: EvalPrediction, compute_result: bool) -> Dict[str, float]:
-        """
-        Trainer 在每个评估步骤调用的核心方法。
-
-        Args:
-            eval_preds (EvalPrediction): 包含当前批次的 predictions 和 label_ids 的对象。
-            compute_result (bool): 由 Trainer 传入的标志。
-                                   如果为 False，则只处理并累积当前批次。
-                                   如果为 True (在最后一个批次)，则计算并返回最终指标。
-        """
-        # --- 1. 每个批次都会执行的部分：计算并累积 Ranks ---
         logits, labels_matrix = eval_preds.predictions, eval_preds.label_ids
 
-        # 将当前批次的数据移动到GPU进行快速计算
-        last_step_logits = logits[:, -1, :]
-        labels = labels_matrix.view(-1)
+        num_eval_steps = 3 # 留一法，最后3个token是eval的
+
+        last_step_logits = logits[0][-num_eval_steps:, :]
+        labels = labels_matrix.view(-1)[-num_eval_steps:]
         
         valid_mask = labels != -100
         labels = labels[valid_mask]
@@ -208,19 +191,15 @@ class StreamingMetricsCalculator:
 
         # 如果这个批次没有有效标签，则直接跳过
         if labels.numel() > 0:
-            # 在 GPU 上高效计算排名
             sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
             ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
             
-            # 将计算出的 ranks (小张量) 移回 CPU 并添加到列表中
             self.all_ranks.append(ranks.cpu())
 
-        # --- 2. 仅在最后一个批次执行的部分：计算最终指标 ---
         if compute_result:
             if not self.all_ranks:
                 return {} # 如果整个评估过程都没有有效标签
 
-            # 将所有批次的 ranks 拼接成一个大张量
             final_ranks = torch.cat(self.all_ranks).float()
             
             metrics = {}
@@ -235,12 +214,10 @@ class StreamingMetricsCalculator:
 
             metrics["MRR"] = round((1.0 / final_ranks).mean().item(), 4)
             
-            # **非常重要**：清空状态，为下一次可能的评估做准备
             self.all_ranks = []
             
             return metrics
         
-        # 如果不是最后一步，返回空字典
         return {}
 
 
@@ -274,7 +251,7 @@ def main():
 
     # <<< 新增: 读取并解析 YAML 配置文件 >>>
     print(f"Loading configuration from: {cli_args.config}")
-    default_config_path = "/home/kfwang/20250613Rec-Factory/try_train/train_config/"
+    default_config_path = "/home/kfwang/20250613Rec-Factory/try_train/pretrain_config/"
     with open(default_config_path+cli_args.config+'.yaml', 'r') as f:
         config_data = yaml.safe_load(f)
 
@@ -282,7 +259,7 @@ def main():
     paths_config = config_data['paths']
     model_params = config_data['model_params']
     training_args_dict = config_data['training_args']
-    dataset_split_config = config_data['dataset_split']
+    # dataset_split_config = config_data['dataset_split']
 
     # 使用从配置中读取的参数
     dataset_path = paths_config['dataset_path']
@@ -295,14 +272,9 @@ def main():
     raw_dataset = load_dataset("json", data_files=dataset_path, split="train")
     # (这部分创建 tokenizer 的逻辑不变，只是使用了来自 config 的变量)
     if not os.path.exists(tokenizer_file):
-        print("Tokenizer not found. Creating a new one from the full dataset...")
-        def text_to_int_list(example):
-            example['item_sequence'] = [int(i.strip()) for i in example['text'].split(',') if i.strip()]
-            return example
-        temp_dataset_with_list = raw_dataset.map(text_to_int_list, remove_columns=["text"])
-        # 注意: MockTrainingArguments 现在也使用配置中的值
+        print("Tokenizer not found. Creating a new one from the RQ code dataset...")
         mock_args = MockTrainingArguments(output_dir=tokenizer_dir, max_length=max_seq_length)
-        tokenizer = create_hybrid_item_tokenizer(dataset=temp_dataset_with_list, training_args=mock_args)
+        tokenizer = create_rq_code_tokenizer(dataset=raw_dataset, training_args=mock_args)
     else:
         print("Found existing tokenizer. Loading it...")
         tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
@@ -313,21 +285,21 @@ def main():
     assert tokenizer.pad_token_id is not None and tokenizer.bos_token_id is not None
     print(f"Final check - pad_token_id: {tokenizer.pad_token_id}, bos_token_id: {tokenizer.bos_token_id}")
 
-    # <<< MODIFIED: 数据集划分现在使用配置中的参数 >>>
-    print("Preprocessing and splitting the dataset...")
-    processed_dataset = raw_dataset.map(
-        final_preprocess_function,
-        batched=True,
-        remove_columns=raw_dataset.column_names,
-        num_proc=4,
-    )
-    split_dataset = processed_dataset.train_test_split(
-        test_size=dataset_split_config['test_size'], 
-        seed=dataset_split_config['seed']
-    )
-    train_dataset = split_dataset["train"]
-    eval_dataset = split_dataset["test"]
-    print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
+    # # <<< MODIFIED: 数据集划分现在使用配置中的参数 >>>
+    # print("Preprocessing and splitting the dataset...")
+    # processed_dataset = raw_dataset.map(
+    #     final_preprocess_function,
+    #     batched=True,
+    #     remove_columns=raw_dataset.column_names,
+    #     num_proc=4,
+    # )
+    # split_dataset = processed_dataset.train_test_split(
+    #     test_size=dataset_split_config['test_size'], 
+    #     seed=dataset_split_config['seed']
+    # )
+    train_dataset = raw_dataset
+    # eval_dataset = split_dataset["test"]
+    # print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
 
     # <<< MODIFIED: LlamaRecConfig 现在从字典动态构建 >>>
     print("Creating LlamaRecForCausalLM model from scratch...")
@@ -359,21 +331,23 @@ def main():
 
     # (DataCollator 和 Trainer 的实例化逻辑不变)
     train_collator = TrainDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
-    eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
+    eval_collator = TrainDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
     
-    # 假设你已经有了上一轮我们讨论的 StreamingMetricsCalculator 类
     streaming_metrics_calculator = StreamingMetricsCalculator() 
 
     trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=train_dataset,
         tokenizer=tokenizer,
         data_collator=train_collator,
         compute_metrics=streaming_metrics_calculator,
         eval_collator=eval_collator,
     )
+
+    chat_template = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
+    tokenizer.chat_template = chat_template
 
     # (训练和保存逻辑不变)
     print("Starting training with proper Leave-One-Out evaluation...")

@@ -1,0 +1,39 @@
+# config.yaml
+# 用于配置 LlamaRec 训练脚本的参数文件
+
+# --- 1. 路径配置 ---
+paths:
+  dataset_path: "/home/kfwang/20250613Rec-Factory/data/KuaiRand-27K-100krows/5_rq_codes_pt_data.json"
+  output_dir: "/home/kfwang/20250613Rec-Factory/try_train/llama-rec_KuaiRand-27K-100krows-checkpoints"
+  tokenizer_dir: "/home/kfwang/20250613Rec-Factory/try_train/rq_code_tokenizer_KuaiRand-27K-100krows"
+
+# --- 2. 数据和模型架构配置 ---
+model_params:
+  # 数据预处理相关
+  max_seq_length: 128
+  
+  # LlamaRecConfig 模型架构相关
+  hidden_size: 256
+  intermediate_size: 512
+  num_hidden_layers: 4
+  num_attention_heads: 4
+  rms_norm_eps: 1.0e-6
+
+# --- 3. 训练过程配置 ---
+# 这些参数将直接传递给 transformers.TrainingArguments
+training_args:
+  per_device_train_batch_size: 128
+  per_device_eval_batch_size: 128
+  gradient_accumulation_steps: 1
+  learning_rate: 5.0e-5
+  num_train_epochs: 20
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.0
+  logging_steps: 100
+  save_strategy: "epoch"
+  eval_strategy: "epoch" 
+  save_total_limit: 20
+  fp16: true
+  report_to: "tensorboard"
+  remove_unused_columns: false
+  batch_eval_metrics: true

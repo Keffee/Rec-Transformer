@@ -1,3 +1,5 @@
 try_train/llama-rec-checkpoints/
 try_train/llama-rec_pantry-checkpoints/
 try_train/llama-rec_SPIAO-checkpoints/
+saves/
+outputs/

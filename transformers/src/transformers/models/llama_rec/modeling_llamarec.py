@@ -606,7 +606,7 @@ class LlamaRecModel(LlamaRecPreTrainedModel):
 
 class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs): ...
 
-
+# 世上怎么会有写的这么丑的loss，好像所有的train和eval技巧全都系在了这个loss上，我决定不对train_data_collator和eval_data_collator做任何区分，它们两个都是同样地全力输入所有item_id
 def ForRecLoss(
     logits: torch.Tensor, # 形状为 (batch_size, seq_len, vocab_size)
     labels: torch.Tensor,
@@ -617,34 +617,29 @@ def ForRecLoss(
     **kwargs,
 ) -> torch.Tensor:
     
-    
-    # 突然发现把training和eval合并之后好像数据格式不太一样
+    num_eval_steps = 3
+    # 把training和eval合并之后好像数据格式不太一样
     if training:
-        # 1. 移位标签，这是语言模型/序列推荐的标准操作
         if shift_labels is None:
             # 预测第 n 个 token 需要使用前 n-1 个 token 的信息
             # 因此 logits 的第 n-1 个位置对应 labels 的第 n 个位置
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
+            # 但是留出3个空吧，最后的eval要用到
+            shift_logits = logits[..., :-num_eval_steps-1, :].contiguous()
+            shift_labels = labels[..., 1:-num_eval_steps].contiguous()
         else:
-            # 如果已经手动移位，直接使用
             shift_logits = logits.contiguous()
             shift_labels = shift_labels.contiguous()
     else:
-        shift_logits = logits[..., -1, :].contiguous()
-        shift_labels = labels.contiguous()
+        shift_logits = logits[..., -num_eval_steps-1:-1, :].contiguous()
+        shift_labels = labels[..., -num_eval_steps:].contiguous()
 
-    # 2. 展平数据以符合 CrossEntropyLoss 的输入要求
-    # CrossEntropyLoss 要求 logits 的形状是 (N, C) 和 labels 的形状是 (N)
-    # C 是类别总数，这里就是 vocab_size
     vocab_size = shift_logits.size(-1)
     
-
     loss = nn.functional.cross_entropy(
         input=shift_logits.view(-1, vocab_size), 
         target=shift_labels.view(-1), 
         ignore_index=ignore_index,
-        reduction="mean" # 对批次中的所有有效 token 的损失取平均
+        reduction="mean" 
     )
 
     return loss
