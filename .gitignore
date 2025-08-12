@@ -1,5 +1,8 @@
 try_train/llama-rec-checkpoints/
 try_train/llama-rec_pantry-checkpoints/
 try_train/llama-rec_SPIAO-checkpoints/
+try_train/llama-rec_KuaiRand-27K-100krows-checkpoints/
 saves/
 outputs/
+data/KuaiRand-27K/
+DataGen_from_mjyin/

@@ -30,7 +30,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
-    custom_reward_function.path=try_train/try_grpo_reward_function.py \
+    custom_reward_function.path=/home/kfwang/20250613Rec-Factory/try_train/try_grpo_reward_function.py \
     custom_reward_function.name=my_reward_fn \
     trainer.critic_warmup=0 \
     trainer.logger='["console","wandb"]' \
