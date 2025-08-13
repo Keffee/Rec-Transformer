@@ -14,3 +14,5 @@ configurations（弃用）/
 try_train/sft_config（给llamafactory设计的，已弃用）
 **/__pycache__/
 LLaMA-Factory（弃用）/
+data/amazon_SPIAO_from_qspan/
+data/amazon_pantry_from_qspan/
