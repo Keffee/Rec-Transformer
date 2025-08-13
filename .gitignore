@@ -8,3 +8,5 @@ data/
 DataGen_from_mjyin/
 .vscode/
 cache/
+tokenizer_try（弃用）/
+configurations（弃用）/
