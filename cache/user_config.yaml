@@ -1,5 +1,0 @@
-cache_dir: null
-lang: en
-last_model: Llama-7B
-path_dict:
-  Llama-7B: /home/kfwang/20250613Rec-Factory/try_train/llama-rec-checkpoints/checkpoint-209352
