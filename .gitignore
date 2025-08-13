@@ -13,3 +13,4 @@ tokenizer_try（弃用）/
 configurations（弃用）/
 try_train/sft_config（给llamafactory设计的，已弃用）
 **/__pycache__/
+LLaMA-Factory（弃用）/
