@@ -2,6 +2,7 @@ try_train/llama-rec-checkpoints/
 try_train/llama-rec_pantry-checkpoints/
 try_train/llama-rec_SPIAO-checkpoints/
 try_train/llama-rec_KuaiRand-27K-100krows-checkpoints/
+try_train/llama-rec_KuaiRand-27K-checkpoints/
 saves/
 outputs/
 data/
@@ -10,3 +11,5 @@ DataGen_from_mjyin/
 cache/
 tokenizer_try（弃用）/
 configurations（弃用）/
+try_train/sft_config（给llamafactory设计的，已弃用）
+**/__pycache__/
