@@ -5,7 +5,9 @@ try_train/llama-rec_KuaiRand-27K-100krows-checkpoints/
 try_train/llama-rec_KuaiRand-27K-checkpoints/
 saves/
 outputs/
-data/
+data/amazon_pantry_from_qspan/
+data/amazon_SPIAO_from_qspan/
+data/KuaiRand-27K/
 DataGen_from_mjyin/
 .vscode/
 cache/
@@ -16,3 +18,5 @@ try_train/sft_config（给llamafactory设计的，已弃用）
 LLaMA-Factory（弃用）/
 data/amazon_SPIAO_from_qspan/
 data/amazon_pantry_from_qspan/
+tmp/
+verl/

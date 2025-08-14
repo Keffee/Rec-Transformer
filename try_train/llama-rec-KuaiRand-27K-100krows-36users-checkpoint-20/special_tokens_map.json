@@ -1,0 +1,4 @@
+{
+  "bos_token": "[BOS]",
+  "pad_token": "[PAD]"
+}
