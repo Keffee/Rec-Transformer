@@ -17,3 +17,5 @@ python our_train_and_generate.py
 会在此目录下生成`rqvae_output`文件夹，并包含`original_item_id_to_rq_code.json`文件，此文件正是原本的正样例序列中的item_id到rq_code的映射，复制到本目录下重命名为`4_item_id_to_rq_code.json`.
 
 5. 在本目录下运行`5_generate_rq_codes_pt_data.py`，它会利用`1_positive_data_100k.csv`和`4_item_id_to_rq_code.json`生成最终的符合LLaMA的pt格式的json`5_rq_codes_pt_data.json`，token之间用空格隔开。
+
+6. 在本目录下运行`6_data_transform_from_pt_json_2_train_test_parquet.py`，它会读取`1_positive_data_100k.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从`1_positive_data_100k.csv`中获取的）
