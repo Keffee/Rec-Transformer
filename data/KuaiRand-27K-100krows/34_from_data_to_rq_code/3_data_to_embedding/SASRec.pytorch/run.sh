@@ -1,0 +1,1 @@
+python ./python/main.py --dataset=KuaiRand_27K_100krows --train_dir=default --maxlen=200 --dropout_rate=0.2 --device=cuda
