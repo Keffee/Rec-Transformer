@@ -70,15 +70,15 @@ def create_rq_code_tokenizer(dataset: Dataset, training_args: MockTrainingArgume
     custom_tokenizer.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
 
     # --- 6. 设置 Post-Processor (自动添加 BOS/EOS) ---
-    # logging.info("Step 6: Setting up post-processor to add BOS/EOS tokens...")
-    # # 重新启用这个功能，因为它对序列模型很有用
-    # custom_tokenizer.post_processor = TemplateProcessing(
-    #     single="[BOS] $A [EOS]",
-    #     special_tokens=[
-    #         ("[BOS]", vocab["[BOS]"]),
-    #         ("[EOS]", vocab["[EOS]"]),
-    #     ],
-    # )
+    logging.info("Step 6: Setting up post-processor to add BOS/EOS tokens...")
+    # 重新启用这个功能，因为它对序列模型很有用
+    custom_tokenizer.post_processor = TemplateProcessing(
+        single="[BOS] $A [EOS]",
+        special_tokens=[
+            ("[BOS]", vocab["[BOS]"]),
+            ("[EOS]", vocab["[EOS]"]),
+        ],
+    )
 
     # --- 7. 配置 Padding ---
     logging.info("Step 7: Enabling padding on the core tokenizer...")
