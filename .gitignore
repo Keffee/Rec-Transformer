@@ -19,4 +19,4 @@ LLaMA-Factory（弃用）/
 data/amazon_SPIAO_from_qspan/
 data/amazon_pantry_from_qspan/
 tmp/
-verl/
+try_train/verl_rl_sh/checkpoints

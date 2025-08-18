@@ -251,7 +251,7 @@ def main():
 
     # <<< 新增: 读取并解析 YAML 配置文件 >>>
     print(f"Loading configuration from: {cli_args.config}")
-    default_config_path = "/home/kfwang/20250613Rec-Factory/try_train/pretrain_config/"
+    default_config_path = "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/try_train/pretrain_config/"
     with open(default_config_path+cli_args.config+'.yaml', 'r') as f:
         config_data = yaml.safe_load(f)
 
@@ -282,8 +282,9 @@ def main():
     # (健壮性检查逻辑不变)
     if tokenizer.pad_token_id is None: tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("[PAD]")
     if tokenizer.bos_token_id is None: tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("[BOS]")
-    assert tokenizer.pad_token_id is not None and tokenizer.bos_token_id is not None
-    print(f"Final check - pad_token_id: {tokenizer.pad_token_id}, bos_token_id: {tokenizer.bos_token_id}")
+    if tokenizer.eos_token_id is None: tokenizer.eos_token_id = tokenizer.convert_tokens_to_ids("[EOS]")
+    assert tokenizer.pad_token_id is not None and tokenizer.bos_token_id is not None and tokenizer.eos_token_id is not None
+    print(f"Final check - pad_token_id: {tokenizer.pad_token_id}, bos_token_id: {tokenizer.bos_token_id}, eos_token_id: {tokenizer.eos_token_id}")
 
     # # <<< MODIFIED: 数据集划分现在使用配置中的参数 >>>
     # print("Preprocessing and splitting the dataset...")

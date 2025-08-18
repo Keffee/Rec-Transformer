@@ -3,14 +3,14 @@
 
 # --- 1. 路径配置 ---
 paths:
-  dataset_path: "/home/kfwang/20250613Rec-Factory/data/KuaiRand-27K-100krows/5_rq_codes_pt_data.json"
-  output_dir: "/home/kfwang/20250613Rec-Factory/try_train/llama-rec_KuaiRand-27K-100krows-checkpoints"
-  tokenizer_dir: "/home/kfwang/20250613Rec-Factory/try_train/rq_code_tokenizer_KuaiRand-27K-100krows"
+  dataset_path: "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-100krows/5_rq_codes_pt_data.json"
+  output_dir: "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/try_train/llama-rec_KuaiRand-27K-100krows-checkpoints"
+  tokenizer_dir: "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/try_train/rq_code_tokenizer_KuaiRand-27K-100krows"
 
 # --- 2. 数据和模型架构配置 ---
 model_params:
   # 数据预处理相关
-  max_seq_length: 128
+  max_seq_length: 4096
   
   # LlamaRecConfig 模型架构相关
   hidden_size: 256
