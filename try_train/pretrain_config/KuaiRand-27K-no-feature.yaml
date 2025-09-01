@@ -3,10 +3,10 @@
 
 # --- 1. 路径配置 ---
 paths:
-  train_dataset_path: "../data/KuaiRand-27K-demo/5_train_rq_codes_pt_data.json"
-  test_dataset_path: "../data/KuaiRand-27K-demo/5_test_rq_codes_pt_data.json"
-  output_dir: "./llama-rec_KuaiRand-27K-demo-checkpoints"
-  tokenizer_dir: "./rq_code_tokenizer_KuaiRand-27K-demo"
+  train_dataset_path: "../data/KuaiRand-27K-no-feature/5_train_rq_codes_pt_data.json"
+  test_dataset_path: "../data/KuaiRand-27K-no-feature/5_test_rq_codes_pt_data.json"
+  output_dir: "./llama-rec_KuaiRand-27K-no-feature-checkpoints"
+  tokenizer_dir: "./rq_code_tokenizer_KuaiRand-27K-no-feature"
 
 # --- 2. 数据和模型架构配置 ---
 model_params:
