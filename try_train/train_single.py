@@ -115,54 +115,54 @@ class EvalDataCollator: # 模拟留一法，已弃用
         return batch
 
 
-import time
+# import time
 # --- 5. 评估指标计算函数 ---
 # 这个目前先不用，之前一直是这个地方卡手了，改进一下
-def compute_metrics(eval_preds: EvalPrediction):    # 已弃用
-    logits, labels_matrix = eval_preds
+# def compute_metrics(eval_preds: EvalPrediction):    # 已弃用
+#     logits, labels_matrix = eval_preds
     
-    # 检查是否有可用的 GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+#     # 检查是否有可用的 GPU
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # 1. 将数据转换为 PyTorch 张量并移动到 GPU
-    # 我们只关心最后一个时间步的 logit
-    last_step_logits = torch.from_numpy(logits[:, -1, :]).to(device)
+#     # 1. 将数据转换为 PyTorch 张量并移动到 GPU
+#     # 我们只关心最后一个时间步的 logit
+#     last_step_logits = torch.from_numpy(logits[:, -1, :]).to(device)
     
-    # 从 labels_matrix 中提取出有效的标签
-    labels = torch.from_numpy(labels_matrix).view(-1).to(device)
+#     # 从 labels_matrix 中提取出有效的标签
+#     labels = torch.from_numpy(labels_matrix).view(-1).to(device)
     
-    # 2. [健壮性检查] 过滤掉不需要计算的 -100 标签
-    valid_mask = labels != -100
-    labels = labels[valid_mask]
-    last_step_logits = last_step_logits[valid_mask]
+#     # 2. [健壮性检查] 过滤掉不需要计算的 -100 标签
+#     valid_mask = labels != -100
+#     labels = labels[valid_mask]
+#     last_step_logits = last_step_logits[valid_mask]
     
-    # 如果过滤后没有有效标签，则直接返回空字典
-    if labels.numel() == 0:
-        return {}
+#     # 如果过滤后没有有效标签，则直接返回空字典
+#     if labels.numel() == 0:
+#         return {}
 
-    # 3. [核心优化] 在 GPU 上执行高效的排序和排名查找
-    # torch.sort 在 GPU 上非常快
-    sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
+#     # 3. [核心优化] 在 GPU 上执行高效的排序和排名查找
+#     # torch.sort 在 GPU 上非常快
+#     sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
     
-    # 使用 broadcast 和 a==b 的方式高效查找 rank
-    ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
+#     # 使用 broadcast 和 a==b 的方式高效查找 rank
+#     ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
 
-    # 4. 计算指标 (可以将结果移回 CPU)
-    ranks = ranks.float() # 转换为浮点数以进行后续计算
+#     # 4. 计算指标 (可以将结果移回 CPU)
+#     ranks = ranks.float() # 转换为浮点数以进行后续计算
     
-    metrics = {}
-    for k in [1, 5, 10, 20, 50]:
-        hr_k = (ranks <= k).float().mean().item()
-        metrics[f"HR@{k}"] = round(hr_k, 4)
+#     metrics = {}
+#     for k in [1, 5, 10, 20, 50]:
+#         hr_k = (ranks <= k).float().mean().item()
+#         metrics[f"HR@{k}"] = round(hr_k, 4)
         
-        in_top_k = (ranks <= k)
-        ndcg_k = (1.0 / torch.log2(ranks + 1.0)).where(in_top_k, 0.0).mean().item()
-        metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
+#         in_top_k = (ranks <= k)
+#         ndcg_k = (1.0 / torch.log2(ranks + 1.0)).where(in_top_k, 0.0).mean().item()
+#         metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
 
-    mrr = (1.0 / ranks).mean().item()
-    metrics["MRR"] = round(mrr, 4)
+#     mrr = (1.0 / ranks).mean().item()
+#     metrics["MRR"] = round(mrr, 4)
     
-    return metrics
+#     return metrics
 
 # 流式指标
 class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3要谨慎
@@ -182,7 +182,7 @@ class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3�
 
         num_eval_steps = 3 # 留一法，最后3个token是eval的
 
-        last_step_logits = logits[0][-num_eval_steps:, :]
+        last_step_logits = logits[0][-num_eval_steps-1:-1, :]
         labels = labels_matrix.view(-1)[-num_eval_steps:]
         
         valid_mask = labels != -100
@@ -251,8 +251,9 @@ def main():
 
     # <<< 新增: 读取并解析 YAML 配置文件 >>>
     print(f"Loading configuration from: {cli_args.config}")
-    default_config_path = "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/try_train/pretrain_config/"
-    with open(default_config_path+cli_args.config+'.yaml', 'r') as f:
+    current_dir_name = os.path.dirname(os.path.abspath("__file__"))
+    config_path = os.path.join(current_dir_name, "pretrain_config", cli_args.config+'.yaml')
+    with open(config_path, 'r') as f:
         config_data = yaml.safe_load(f)
 
     # <<< 新增: 从解析的数据中提取配置组 >>>
@@ -262,14 +263,17 @@ def main():
     # dataset_split_config = config_data['dataset_split']
 
     # 使用从配置中读取的参数
-    dataset_path = paths_config['dataset_path']
+    dataset_path = dict(
+        train=paths_config['train_dataset_path'],
+        test=paths_config['test_dataset_path']
+    )
     output_dir = paths_config['output_dir']
     tokenizer_dir = paths_config['tokenizer_dir']
     max_seq_length = model_params['max_seq_length']
 
     # <<< MODIFIED: Tokenizer 创建逻辑现在使用配置中的路径 >>>
     tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
-    raw_dataset = load_dataset("json", data_files=dataset_path, split="train")
+    raw_dataset = load_dataset("json", data_files=dataset_path, split="test")
     # (这部分创建 tokenizer 的逻辑不变，只是使用了来自 config 的变量)
     if not os.path.exists(tokenizer_file):
         print("Tokenizer not found. Creating a new one from the RQ code dataset...")
@@ -298,7 +302,8 @@ def main():
     #     test_size=dataset_split_config['test_size'], 
     #     seed=dataset_split_config['seed']
     # )
-    train_dataset = raw_dataset
+    train_dataset = load_dataset("json", data_files=dataset_path, split="train")
+    test_dataset = load_dataset("json", data_files=dataset_path, split="test")
     # eval_dataset = split_dataset["test"]
     # print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
 
@@ -332,7 +337,7 @@ def main():
 
     # (DataCollator 和 Trainer 的实例化逻辑不变)
     train_collator = TrainDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
-    eval_collator = TrainDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
+    eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=max_seq_length)
     
     streaming_metrics_calculator = StreamingMetricsCalculator() 
 
@@ -340,7 +345,7 @@ def main():
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=train_dataset,
+        eval_dataset=test_dataset,
         tokenizer=tokenizer,
         data_collator=train_collator,
         compute_metrics=streaming_metrics_calculator,

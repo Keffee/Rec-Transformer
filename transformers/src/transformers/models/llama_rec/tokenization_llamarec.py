@@ -72,8 +72,10 @@ def create_rq_code_tokenizer(dataset: Dataset, training_args: MockTrainingArgume
     # --- 6. 设置 Post-Processor (自动添加 BOS/EOS) ---
     logging.info("Step 6: Setting up post-processor to add BOS/EOS tokens...")
     # 重新启用这个功能，因为它对序列模型很有用
+    # 话虽如此，我相信对一个语言模型来说EOS很有用，但是对于一个序列推荐来说，什么时候是停止？什么时候是结束？因此我认为不应该添加eos token
     custom_tokenizer.post_processor = TemplateProcessing(
-        single="[BOS] $A [EOS]",
+        # single="[BOS] $A [EOS]",
+        single= "$A",
         special_tokens=[
             ("[BOS]", vocab["[BOS]"]),
             ("[EOS]", vocab["[EOS]"]),

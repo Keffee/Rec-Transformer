@@ -3,9 +3,10 @@
 
 # --- 1. 路径配置 ---
 paths:
-  dataset_path: "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-100krows/5_rq_codes_pt_data.json"
-  output_dir: "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/try_train/llama-rec_KuaiRand-27K-100krows-checkpoints"
-  tokenizer_dir: "/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/try_train/rq_code_tokenizer_KuaiRand-27K-100krows"
+  train_dataset_path: "../data/KuaiRand-27K-100krows/5_train_rq_codes_pt_data.json"
+  test_dataset_path: "../data/KuaiRand-27K-100krows/5_test_rq_codes_pt_data.json"
+  output_dir: "./llama-rec_KuaiRand-27K-100krows-checkpoints"
+  tokenizer_dir: "./rq_code_tokenizer_KuaiRand-27K-100krows"
 
 # --- 2. 数据和模型架构配置 ---
 model_params:

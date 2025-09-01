@@ -1,0 +1,1 @@
+python train_single --config KuaiRand-27K-demo
