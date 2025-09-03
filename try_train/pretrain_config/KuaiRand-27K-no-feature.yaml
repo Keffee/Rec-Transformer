@@ -11,7 +11,7 @@ paths:
 # --- 2. 数据和模型架构配置 ---
 model_params:
   # 数据预处理相关
-  max_seq_length: 48000
+  max_seq_length: 10000
   
   # LlamaRecConfig 模型架构相关
   hidden_size: 256
