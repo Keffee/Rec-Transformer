@@ -24,3 +24,4 @@ data/KuaiRand-27K-no-feature/*.csv
 data/KuaiRand-27K-no-feature/*.parquet
 data/KuaiRand-27K-no-feature/*.npy
 *.out
+try_train/llama-rec_KuaiRand-27K-no-feature-checkpoints
