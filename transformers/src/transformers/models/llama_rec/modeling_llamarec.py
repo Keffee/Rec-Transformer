@@ -609,6 +609,7 @@ class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs): ...
 # 世上怎么会有写的这么丑的loss，好像所有的train和eval技巧全都系在了这个loss上，我决定不对train_data_collator和eval_data_collator做任何区分，它们两个都是同样地全力输入所有item_id
 # 有点神金，毕竟eval阶段的loss好像没什么用（
 # 现在改了，还是把train和eval的collator区分，train阶段认真计算所有loss，eval阶段直接返回none
+# update from yuxia
 def ForRecLoss(
     logits: torch.Tensor, # 形状为 (batch_size, seq_len, vocab_size)
     labels: torch.Tensor,
@@ -626,18 +627,28 @@ def ForRecLoss(
             # 预测第 n 个 token 需要使用前 n-1 个 token 的信息
             # 因此 logits 的第 n-1 个位置对应 labels 的第 n 个位置
             # 但是留出3个空吧，最后的eval要用到
-            shift_logits = logits[..., :-num_eval_steps-1, :].contiguous()
-            shift_labels = labels[..., 1:-num_eval_steps].contiguous()
+            #shift_logits = logits[..., :-num_eval_steps-1, :].contiguous()
+            #shift_labels = labels[..., 1:-num_eval_steps].contiguous()
+            shift_logits = logits[:, :-1, :].contiguous()
+            shift_labels = labels[:, 1:].contiguous()
+
         else:
             shift_logits = logits.contiguous()
             shift_labels = shift_labels.contiguous()
     else:
         # shift_logits = logits[..., -num_eval_steps-1:-1, :].contiguous()
         # shift_labels = labels[..., -num_eval_steps:].contiguous()
-        return None
+        last_logits = logits[:, -1, :]        # [batch_size, vocab_size]
+        last_labels = labels[:, -1]           # [batch_size]
+        #return 0
 
     vocab_size = shift_logits.size(-1)
+    #print(logits.size()) #torch.Size([1, 48000, 775])
+    #print(labels.size()) # torch.Size([1, 48000])
+    #print(shift_labels.view(-1).size()) # torch.Size([0])
+    #print(shift_logits.view(-1, vocab_size).size()) # torch.Size([47999, 775])
     
+
     loss = nn.functional.cross_entropy(
         input=shift_logits.view(-1, vocab_size), 
         target=shift_labels.view(-1), 

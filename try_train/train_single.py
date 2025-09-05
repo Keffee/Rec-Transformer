@@ -66,22 +66,32 @@ class TrainDataCollator:
         return batch_dict
 
 # --- [最终版] 评估数据整理器 ---
-class EvalDataCollator: # 模拟留一法，已弃用
+# update from yuxia
+class EvalDataCollator: 
     def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
         self.tokenizer = tokenizer
         self.max_length = max_length
 
     def __call__(self, examples: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
         # 1. 分离输入和标签 (原始 item ID)
-        input_sequences_as_int = [e["sequence"][:-1] for e in examples]
-        eval_labels_as_int = [e["sequence"][-1] for e in examples]
-        
+        #input_sequences_as_int = [e["sequence"][:-1] for e in examples]
+        #eval_labels_as_int = [e["sequence"][-1] for e in examples]
+        all_inputs, all_labels = [], []
+        self.n_last = 3 # the number of semantic token ids for one item id
+        for e in examples:
+            tokens = e["text"].split(" ")
+            # take last n_last tokens as prediction targets
+            for i in range(self.n_last):
+                # input is everything up to this target
+                input_seq = tokens[: -(self.n_last - i)]
+                label_tok = tokens[-(self.n_last - i)]
+                all_inputs.append(input_seq)
+                all_labels.append(label_tok)        
         # 2. 将输入序列的原始 ID 转换为字符串
-        input_sequences_as_str = [[str(item_id) for item_id in seq] for seq in input_sequences_as_int]
-        
+        #input_sequences_as_str = [[str(item_id) for item_id in seq] for seq in input_sequences_as_int]
         # 3. 使用 tokenizer 对输入序列进行编码、截断和填充
         batch = self.tokenizer(
-            input_sequences_as_str,
+            all_inputs,
             is_split_into_words=True,
             padding=True,
             truncation=True,
@@ -90,10 +100,13 @@ class EvalDataCollator: # 模拟留一法，已弃用
         )
         
         # 4. 将评估标签的原始 ID 转换为 Token ID
-        eval_labels_as_token_ids = self.tokenizer.convert_tokens_to_ids(
-            [str(item_id) for item_id in eval_labels_as_int]
-        )
+        label_ids = self.tokenizer.convert_tokens_to_ids(all_labels)
+        batch["labels"] = torch.tensor(label_ids)
         
+        #eval_labels_as_token_ids = self.tokenizer.convert_tokens_to_ids(
+        #    [str(item_id) for item_id in eval_labels_as_int]
+        #)
+        #print(eval_labels_as_token_ids[:2])
         # --- [核心修正] 创建一个与 input_ids 形状相同的 labels 张量 ---
         
         # # 首先，创建一个全是 -100 的张量
@@ -110,9 +123,11 @@ class EvalDataCollator: # 模拟留一法，已弃用
         # #     # 在该位置填上真实的目标 Token ID
         # #     labels[i, last_token_idx] = eval_labels_as_token_ids[i]
             
-        batch['labels'] = torch.tensor(eval_labels_as_token_ids)
+        #batch['labels'] = torch.tensor(eval_labels_as_token_ids)
         
         return batch
+
+
 
 
 # import time
