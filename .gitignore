@@ -21,7 +21,8 @@ data/amazon_pantry_from_qspan/
 tmp/
 try_train/verl_rl_sh/checkpoints
 data/KuaiRand-27K-no-feature/*.csv
-data/KuaiRand-27K-no-feature/*.parquet
+data/KuaiRand-27K-no-feature/6_parquet_for_verl/*.parquet
 data/KuaiRand-27K-no-feature/*.npy
+data/KuaiRand-27K-no-feature/*.json
 *.out
 try_train/llama-rec_KuaiRand-27K-no-feature-checkpoints
