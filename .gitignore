@@ -24,5 +24,7 @@ data/KuaiRand-27K-no-feature/*.csv
 data/KuaiRand-27K-no-feature/6_parquet_for_verl/*.parquet
 data/KuaiRand-27K-no-feature/*.npy
 data/KuaiRand-27K-no-feature/*.json
+data/KuaiRand-27K-no-feature/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default/
+data/KuaiRand-27K-no-feature/
 *.out
 try_train/llama-rec_KuaiRand-27K-no-feature-checkpoints
