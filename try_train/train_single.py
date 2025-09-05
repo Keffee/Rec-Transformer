@@ -90,118 +90,7 @@ class EvalDataCollator:
             batch_dict["labels"][batch_dict["labels"] == self.tokenizer.pad_token_id] = -100
         
         return batch_dict
-        
-        '''
 
-
-
-# import time
-# --- 5. 评估指标计算函数 ---
-# 这个目前先不用，之前一直是这个地方卡手了，改进一下
-# def compute_metrics(eval_preds: EvalPrediction):    # 已弃用
-#     logits, labels_matrix = eval_preds
-    
-#     # 检查是否有可用的 GPU
-#     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-#     # 1. 将数据转换为 PyTorch 张量并移动到 GPU
-#     # 我们只关心最后一个时间步的 logit
-#     last_step_logits = torch.from_numpy(logits[:, -1, :]).to(device)
-    
-#     # 从 labels_matrix 中提取出有效的标签
-#     labels = torch.from_numpy(labels_matrix).view(-1).to(device)
-    
-#     # 2. [健壮性检查] 过滤掉不需要计算的 -100 标签
-#     valid_mask = labels != -100
-#     labels = labels[valid_mask]
-#     last_step_logits = last_step_logits[valid_mask]
-    
-#     # 如果过滤后没有有效标签，则直接返回空字典
-#     if labels.numel() == 0:
-#         return {}
-
-#     # 3. [核心优化] 在 GPU 上执行高效的排序和排名查找
-#     # torch.sort 在 GPU 上非常快
-#     sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
-    
-#     # 使用 broadcast 和 a==b 的方式高效查找 rank
-#     ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
-
-#     # 4. 计算指标 (可以将结果移回 CPU)
-#     ranks = ranks.float() # 转换为浮点数以进行后续计算
-    
-#     metrics = {}
-#     for k in [1, 5, 10, 20, 50]:
-#         hr_k = (ranks <= k).float().mean().item()
-#         metrics[f"HR@{k}"] = round(hr_k, 4)
-        
-#         in_top_k = (ranks <= k)
-#         ndcg_k = (1.0 / torch.log2(ranks + 1.0)).where(in_top_k, 0.0).mean().item()
-#         metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
-
-#     mrr = (1.0 / ranks).mean().item()
-#     metrics["MRR"] = round(mrr, 4)
-    
-#     return metrics
-
-class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3要谨慎
-    def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
-        """
-        初始化计算器。
-
-        Args:
-            k_values (List[int]): 用于计算 HR@k 和 NDCG@k 的 k 值列表。
-        """
-        self.k_values = k_values
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.all_ranks: List[torch.Tensor] = []
-
-    def __call__(self, eval_preds: EvalPrediction, compute_result: bool) -> Dict[str, float]:
-        logits, labels_matrix = eval_preds.predictions, eval_preds.label_ids
-        print('eval logits.size: ', logits.size())
-        print('eval labels_matrix.size: ', labels_matrix.size())
-        num_eval_steps = 3 # 留一法，最后3个token是eval的
-        tgt_pad_len = 6223*num_eval_steps
-        last_step_logits = logits[0][-num_eval_steps-1:-1, :]
-        labels = labels_matrix.view(-1)[-num_eval_steps:]
-        
-        valid_mask = labels != -100
-        labels = labels[valid_mask]
-        last_step_logits = last_step_logits[valid_mask]
-
-        # 如果这个批次没有有效标签，则直接跳过
-        if labels.numel() > 0:
-            sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
-            ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
-            
-            self.all_ranks.append(ranks.cpu())
-        #print('compute_result: ', compute_result)
-        if compute_result:
-            #print('---------comp')
-            if not self.all_ranks:
-                return {} # 如果整个评估过程都没有有效标签
-
-            final_ranks = torch.cat(self.all_ranks).float()
-            
-            metrics = {}
-            for k in self.k_values:
-                in_top_k = final_ranks <= k
-                hr_k = in_top_k.float().mean().item()
-                metrics[f"HR@{k}"] = round(hr_k, 4)
-                
-                # 计算 NDCG
-                ndcg_k = (1.0 / torch.log2(final_ranks + 1.0)).where(in_top_k, 0.0).mean().item()
-                metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
-
-            metrics["MRR"] = round((1.0 / final_ranks).mean().item(), 4)
-            print(metrics)
-            self.all_ranks = []
-            
-            return metrics
-        
-        return {}
-
-'''
 # 流式指标
 class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3要谨慎
     def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
@@ -258,7 +147,6 @@ class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3�
             return metrics
         
         return {}
-'''
 
 # --- 6. 自定义 Trainer ---
 # 这个 Trainer 可以确保评估时使用我们自定义的 EvalDataCollator
