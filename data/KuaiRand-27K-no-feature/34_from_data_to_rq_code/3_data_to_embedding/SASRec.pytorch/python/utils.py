@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 from multiprocessing import Process, Queue
+import csv
+import sys
 
+csv.field_size_limit(sys.maxsize)
 def build_index(dataset_name):
 
     ui_mat = np.loadtxt('data/%s.txt' % dataset_name, dtype=np.int32)

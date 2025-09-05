@@ -113,7 +113,6 @@ TORCHAO_MIN_VERSION = "0.4.0"
 AUTOROUND_MIN_VERSION = "0.5.0"
 
 _accelerate_available, _accelerate_version = _is_package_available("accelerate", return_version=True)
-# _apex_available = _is_package_available("apex")
 _apex_available = False #_is_package_available("apex")
 _apollo_torch_available = _is_package_available("apollo_torch")
 _aqlm_available = _is_package_available("aqlm")

@@ -66,32 +66,18 @@ class TrainDataCollator:
         return batch_dict
 
 # --- [最终版] 评估数据整理器 ---
-# update from yuxia
+
 class EvalDataCollator: 
     def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
         self.tokenizer = tokenizer
         self.max_length = max_length
 
     def __call__(self, examples: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
-        # 1. 分离输入和标签 (原始 item ID)
-        #input_sequences_as_int = [e["sequence"][:-1] for e in examples]
-        #eval_labels_as_int = [e["sequence"][-1] for e in examples]
-        all_inputs, all_labels = [], []
-        self.n_last = 3 # the number of semantic token ids for one item id
-        for e in examples:
-            tokens = e["text"].split(" ")
-            # take last n_last tokens as prediction targets
-            for i in range(self.n_last):
-                # input is everything up to this target
-                input_seq = tokens[: -(self.n_last - i)]
-                label_tok = tokens[-(self.n_last - i)]
-                all_inputs.append(input_seq)
-                all_labels.append(label_tok)        
-        # 2. 将输入序列的原始 ID 转换为字符串
-        #input_sequences_as_str = [[str(item_id) for item_id in seq] for seq in input_sequences_as_int]
-        # 3. 使用 tokenizer 对输入序列进行编码、截断和填充
-        batch = self.tokenizer(
-            all_inputs,
+        sequences = [e["text"] for e in examples]
+        # sequences_as_str = [[str(item_id) for item_id in seq] for seq in sequences_as_int]
+
+        batch_dict = self.tokenizer(
+            sequences,
             is_split_into_words=True,
             padding=True,
             truncation=True,
@@ -99,34 +85,13 @@ class EvalDataCollator:
             return_tensors="pt"
         )
         
-        # 4. 将评估标签的原始 ID 转换为 Token ID
-        label_ids = self.tokenizer.convert_tokens_to_ids(all_labels)
-        batch["labels"] = torch.tensor(label_ids)
+        batch_dict['labels'] = batch_dict['input_ids'].clone()
+        if self.tokenizer.pad_token_id is not None:
+            batch_dict["labels"][batch_dict["labels"] == self.tokenizer.pad_token_id] = -100
         
-        #eval_labels_as_token_ids = self.tokenizer.convert_tokens_to_ids(
-        #    [str(item_id) for item_id in eval_labels_as_int]
-        #)
-        #print(eval_labels_as_token_ids[:2])
-        # --- [核心修正] 创建一个与 input_ids 形状相同的 labels 张量 ---
+        return batch_dict
         
-        # # 首先，创建一个全是 -100 的张量
-        # labels = torch.full_like(batch['input_ids'], -100)
-        
-        # # 然后，只在每个序列的最后一个有效位置（非 padding 的位置）填上真实标签
-        # # 我们需要找到每个序列的长度
-        # sequence_lengths = batch['attention_mask'].sum(dim=1)
-        
-        # labels[:, -1] = torch.tensor(eval_labels_as_token_ids)
-        # # for i in range(len(examples)):
-        # #     # 最后一个有效 token 的索引是 length - 1
-        # #     last_token_idx = sequence_lengths[i] - 1
-        # #     # 在该位置填上真实的目标 Token ID
-        # #     labels[i, last_token_idx] = eval_labels_as_token_ids[i]
-            
-        #batch['labels'] = torch.tensor(eval_labels_as_token_ids)
-        
-        return batch
-
+        '''
 
 
 
@@ -179,6 +144,64 @@ class EvalDataCollator:
     
 #     return metrics
 
+class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3要谨慎
+    def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
+        """
+        初始化计算器。
+
+        Args:
+            k_values (List[int]): 用于计算 HR@k 和 NDCG@k 的 k 值列表。
+        """
+        self.k_values = k_values
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.all_ranks: List[torch.Tensor] = []
+
+    def __call__(self, eval_preds: EvalPrediction, compute_result: bool) -> Dict[str, float]:
+        logits, labels_matrix = eval_preds.predictions, eval_preds.label_ids
+        print('eval logits.size: ', logits.size())
+        print('eval labels_matrix.size: ', labels_matrix.size())
+        num_eval_steps = 3 # 留一法，最后3个token是eval的
+        tgt_pad_len = 6223*num_eval_steps
+        last_step_logits = logits[0][-num_eval_steps-1:-1, :]
+        labels = labels_matrix.view(-1)[-num_eval_steps:]
+        
+        valid_mask = labels != -100
+        labels = labels[valid_mask]
+        last_step_logits = last_step_logits[valid_mask]
+
+        # 如果这个批次没有有效标签，则直接跳过
+        if labels.numel() > 0:
+            sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
+            ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
+            
+            self.all_ranks.append(ranks.cpu())
+        #print('compute_result: ', compute_result)
+        if compute_result:
+            #print('---------comp')
+            if not self.all_ranks:
+                return {} # 如果整个评估过程都没有有效标签
+
+            final_ranks = torch.cat(self.all_ranks).float()
+            
+            metrics = {}
+            for k in self.k_values:
+                in_top_k = final_ranks <= k
+                hr_k = in_top_k.float().mean().item()
+                metrics[f"HR@{k}"] = round(hr_k, 4)
+                
+                # 计算 NDCG
+                ndcg_k = (1.0 / torch.log2(final_ranks + 1.0)).where(in_top_k, 0.0).mean().item()
+                metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
+
+            metrics["MRR"] = round((1.0 / final_ranks).mean().item(), 4)
+            print(metrics)
+            self.all_ranks = []
+            
+            return metrics
+        
+        return {}
+
+'''
 # 流式指标
 class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3要谨慎
     def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
@@ -210,8 +233,9 @@ class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3�
             ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
             
             self.all_ranks.append(ranks.cpu())
-
+        #print('compute_result: ', compute_result)
         if compute_result:
+            #print('---------comp')
             if not self.all_ranks:
                 return {} # 如果整个评估过程都没有有效标签
 
@@ -228,13 +252,13 @@ class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3�
                 metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
 
             metrics["MRR"] = round((1.0 / final_ranks).mean().item(), 4)
-            
+            print(metrics)
             self.all_ranks = []
             
             return metrics
         
         return {}
-
+'''
 
 # --- 6. 自定义 Trainer ---
 # 这个 Trainer 可以确保评估时使用我们自定义的 EvalDataCollator

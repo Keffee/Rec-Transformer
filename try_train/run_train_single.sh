@@ -1,1 +1,1 @@
-python train_single --config KuaiRand-27K-no-feature
+python train_single.py --config KuaiRand-27K-no-feature

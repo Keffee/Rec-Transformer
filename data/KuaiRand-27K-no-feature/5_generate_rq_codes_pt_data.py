@@ -55,7 +55,9 @@ def convert_sequences(args):
 
 
         # 假设固定的 rq_codes
-        fixed_rq_codes = ["<a_256>", "<b_256>", "<c_256>"]  # 根据需要替换为你的固定值
+        #fixed_rq_codes = ["<a_256>", "<b_256>", "<c_256>"]  # 根据需要替换为你的固定值
+        fixed_rq_codes = ["[UNK]", "[UNK]", "[UNK]"]  # 根据需要替换为你的固定值
+        pad_codes = ["[PAD]", "[PAD]", "[PAD]"]  # 根据需要替换为你的固定值
 
         for item_id in original_ids:
             # item_id 在CSV中是字符串，正好可以作为JSON加载的字典的键
@@ -73,7 +75,8 @@ def convert_sequences(args):
                     # 填充与其他 rq_codes 相同长度的 0
                     # 假设其他 rq_codes 的长度为 len(other_rq_codes)
                     length_of_other_rq_codes = 3  # 如果 rq_codes 为空，则长度为 0
-                    full_sequence_codes.extend([0] * length_of_other_rq_codes)
+                    #full_sequence_codes.extend([0] * length_of_other_rq_codes)
+                    full_sequence_codes.extend(pad_codes)
                 else:
                     # 使用固定的 rq_codes 填充
                     full_sequence_codes.extend(fixed_rq_codes)
@@ -90,7 +93,7 @@ def convert_sequences(args):
             final_output_list.append(output_item)
 
     if missing_ids:
-        print(f"\n警告：处理过程中发现 {len(missing_ids)} 个无法在映射文件中找到的物品ID。")
+        print(f"\n警告：处理过程中发现 {len(set(missing_ids))} 个无法在映射文件中找到的物品ID。")
         print(f"部分缺失的ID示例: {list(missing_ids)[:10]}")
 
     # --- 第4步: 将最终结果保存为JSON文件 ---
@@ -109,13 +112,15 @@ def convert_sequences(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Convert item ID sequences to RQ code sequences.")
     
-    parser.add_argument('--sequence_data_path', type=str, default='1_positive_data_100k.csv',
+    #parser.add_argument('--sequence_data_path', type=str, default='1_positive_data_100k.csv',
+    #                    help="Path to the input CSV file with item sequences (e.g., '1_positive_data_100k.csv').")
+    parser.add_argument('--sequence_data_path', type=str, default='1_1_test.csv',
                         help="Path to the input CSV file with item sequences (e.g., '1_positive_data_100k.csv').")
-    
+        
     parser.add_argument('--rq_map_path', type=str, default='4_item_id_to_rq_code.json',
                         help="Path to the JSON file mapping original item IDs to RQ codes (e.g., '4_item_id_to_rq_code.json').")
                         
-    parser.add_argument('--output_path', type=str, default='5_rq_codes_pt_data.json',
+    parser.add_argument('--output_path', type=str, default='5_test_rq_codes_pt_data.json',
                         help="Path for the output JSON file.")
 
     args = parser.parse_args()

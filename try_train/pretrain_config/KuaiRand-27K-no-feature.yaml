@@ -11,8 +11,8 @@ paths:
 # --- 2. 数据和模型架构配置 ---
 model_params:
   # 数据预处理相关
-  max_seq_length: 10000
-  
+  max_seq_length: 1000
+
   # LlamaRecConfig 模型架构相关
   hidden_size: 256
   intermediate_size: 512
@@ -30,7 +30,7 @@ training_args:
   num_train_epochs: 20
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.0
-  logging_steps: 100
+  #logging_steps: 100
   save_strategy: "epoch"
   eval_strategy: "epoch" 
   save_total_limit: 20

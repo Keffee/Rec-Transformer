@@ -22,7 +22,7 @@ def remap_ids_and_save(input_csv_path: str, output_dir: str = '.'):
     output_path.mkdir(parents=True, exist_ok=True)
     
     # 定义输出文件的路径
-    remapped_data_path = output_path / '2_remapped_positive_data_100k.csv'
+    remapped_data_path = output_path / '2_remapped_positive_data_full.csv'
     user_map_path = output_path / '2_user_id_map.csv'
     item_map_path = output_path / '2_item_id_map.csv'
 

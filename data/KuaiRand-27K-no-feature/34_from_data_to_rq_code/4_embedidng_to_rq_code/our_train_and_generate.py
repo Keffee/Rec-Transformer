@@ -21,9 +21,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train RQ-VAE and Generate Mapped Codes")
 
     # --- 输入/输出路径参数 ---
-    parser.add_argument("--sasrec_emb_path", type=str, default=r'/home/kfwang/20250613Rec-Factory/data/KuaiRand-27K-100krows/3_IdZeroIsPadding_item_embeddings.npy',
+    parser.add_argument("--sasrec_emb_path", type=str, default=r'/home/jovyan/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-no-feature/3_IdZeroIsPadding_item_embeddings.npy',
                         help="Path to the item embeddings .npy file from SASRec.")
-    parser.add_argument("--item_map_path", type=str, default=r'/home/kfwang/20250613Rec-Factory/data/KuaiRand-27K-100krows/2_item_id_map.csv',
+    parser.add_argument("--item_map_path", type=str, default=r'/home/jovyan/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-no-feature/2_item_id_map.csv',
                         help="Path to the item_id_map.csv file.")
     parser.add_argument("--ckpt_dir", type=str, default="./rqvae_checkpoints",
                         help="Directory to save RQ-VAE model checkpoints.")

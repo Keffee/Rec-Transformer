@@ -2504,6 +2504,7 @@ class Trainer:
                 remainder < args.gradient_accumulation_steps
             )
             for _ in range(total_updates):
+            #for _ in range(1):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
                 batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches, args.device)

@@ -622,7 +622,8 @@ def ForRecLoss(
     
     num_eval_steps = 0
     # 把training和eval合并之后好像数据格式不太一样
-    if training:
+    #if training:
+    if True:
         if shift_labels is None:
             # 预测第 n 个 token 需要使用前 n-1 个 token 的信息
             # 因此 logits 的第 n-1 个位置对应 labels 的第 n 个位置
@@ -635,13 +636,9 @@ def ForRecLoss(
         else:
             shift_logits = logits.contiguous()
             shift_labels = shift_labels.contiguous()
-    else:
+    #else:
         # shift_logits = logits[..., -num_eval_steps-1:-1, :].contiguous()
         # shift_labels = labels[..., -num_eval_steps:].contiguous()
-        last_logits = logits[:, -1, :]        # [batch_size, vocab_size]
-        last_labels = labels[:, -1]           # [batch_size]
-        #return 0
-
     vocab_size = shift_logits.size(-1)
     #print(logits.size()) #torch.Size([1, 48000, 775])
     #print(labels.size()) # torch.Size([1, 48000])

@@ -27,6 +27,7 @@ parser.add_argument('--device', default='cuda', type=str)
 parser.add_argument('--inference_only', default=False, type=str2bool)
 parser.add_argument('--state_dict_path', default=None, type=str)
 parser.add_argument('--norm_first', action='store_true', default=False)
+parser.add_argument('--patience', default=3, type=int)
 
 args = parser.parse_args()
 if not os.path.isdir(args.dataset + '_' + args.train_dir):
@@ -80,7 +81,7 @@ if __name__ == '__main__':
     
     # global dataset
     # dataset = data_partition(args.dataset)
-    csv_file_path = r'/home/kfwang/20250613Rec-Factory/data/KuaiRand-27K-简易版本/2_remapped_positive_data_100k.csv'
+    csv_file_path = r'/home/jovyan/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-no-feature/2_remapped_positive_data_full.csv'
     u2i_index, i2u_index = build_index_from_csv(csv_file_path)
     dataset = csv_data_partition(csv_file_path)
 
@@ -137,10 +138,13 @@ if __name__ == '__main__':
 
     best_val_ndcg, best_val_hr = 0.0, 0.0
     best_test_ndcg, best_test_hr = 0.0, 0.0
+    stopping_counter = 0
+    best_epoch = 0
     T = 0.0
     t0 = time.time()
     for epoch in range(epoch_start_idx, args.num_epochs + 1):
         if args.inference_only: break # just to decrease identition
+        epoch_loss = 0.0
         for step in range(num_batch): # tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b'):
             u, seq, pos, neg = sampler.next_batch() # tuples to ndarray
             u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
@@ -154,19 +158,23 @@ if __name__ == '__main__':
             for param in model.item_emb.parameters(): loss += args.l2_emb * torch.norm(param)
             loss.backward()
             adam_optimizer.step()
-            print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
-
+            epoch_loss += loss.item()
+            #print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
+        avg_epoch_loss = epoch_loss / num_batch
+        print(f"====> Epoch {epoch} Average Loss: {avg_epoch_loss:.4f}")
         if epoch % 20 == 0:
             model.eval()
             t1 = time.time() - t0
             T += t1
             print('Evaluating', end='')
             t_test = evaluate(model, dataset, args)
-            t_valid = evaluate_valid(model, dataset, args)
-            print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
-                    % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
-
+            #t_valid = evaluate_valid(model, dataset, args)
+            print('epoch:%d, time: %f(s),  test (NDCG@10: %.4f, HR@10: %.4f)'
+                    % (epoch, T,  t_test[0], t_test[1]))
+            improved = False
+            '''
             if t_valid[0] > best_val_ndcg or t_valid[1] > best_val_hr or t_test[0] > best_test_ndcg or t_test[1] > best_test_hr:
+                improved = True
                 best_val_ndcg = max(t_valid[0], best_val_ndcg)
                 best_val_hr = max(t_valid[1], best_val_hr)
                 best_test_ndcg = max(t_test[0], best_test_ndcg)
@@ -174,12 +182,36 @@ if __name__ == '__main__':
                 folder = args.dataset + '_' + args.train_dir
                 fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
                 fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
-
+                best_epoch = epoch
                 best_model_path = os.path.join(folder, fname)
                 torch.save(model.state_dict(), os.path.join(folder, fname))
-
             f.write(str(epoch) + ' ' + str(t_valid) + ' ' + str(t_test) + '\n')
             f.flush()
+            '''
+            if t_test[0] > best_test_ndcg or t_test[1] > best_test_hr:
+                improved = True
+                #best_val_ndcg = max(t_valid[0], best_val_ndcg)
+                #best_val_hr = max(t_valid[1], best_val_hr)
+                best_test_ndcg = max(t_test[0], best_test_ndcg)
+                best_test_hr = max(t_test[1], best_test_hr)
+                folder = args.dataset + '_' + args.train_dir
+                fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
+                fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
+                best_epoch = epoch
+                best_model_path = os.path.join(folder, fname)
+                torch.save(model.state_dict(), os.path.join(folder, fname))
+            f.write(str(epoch) + ' ' + str(t_test) + '\n')
+            f.flush()            
+            if improved:
+                stopping_counter = 0
+            else:
+                stopping_counter += 1
+                print(f"No improvement. Early stopping counter = {stopping_counter}/{args.patience}")
+
+            if stopping_counter >= args.patience:
+                print(f"Early stopping triggered at epoch {epoch}. Best epoch was {best_epoch}.")
+                break
+
             t0 = time.time()
             model.train()
     
