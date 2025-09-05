@@ -4,22 +4,26 @@
 
 import pandas as pd
 import csv
-
-def process_user_sequences(input_csv_path: str, output_csv_path: str):
+import multiprocessing
+import numpy as np
+from typing import List, Dict, Any, Tuple
+from functools import partial
+import os
+# --- 步骤 1: 定义核心分析函数，用于第一阶段的并行处理 ---
+def analyze_chunk(df_chunk: pd.DataFrame, cutoff_timestamp: int) -> Tuple[List[Dict[str, Any]], int]:
     """
     分析 DataFrame 的一个子集（块），筛选有效互动，并按时间戳分割序列。
 
     Args:
-        input_csv_path (str): 输入的CSV文件路径。
-        output_csv_path (str): 处理后输出的CSV文件路径。
-    """
-    try:
-        # 读取原始CSV文件
-        df = pd.read_csv(input_csv_path)
-    except FileNotFoundError:
-        print(f"错误：输入文件未找到，请检查路径 '{input_csv_path}'")
-        return
+        df_chunk (pd.DataFrame): 输入的 DataFrame 数据块。
+        cutoff_timestamp (int): 用于分割训练集和测试集的时间戳。
 
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: 
+            - 一个包含处理后用户数据的列表。每个用户是一个字典，包含 user_id, before_items, 和 after_items。
+            - 这个数据块中，时间戳之后最长子序列的长度。
+    """
+    
     # 定义需要检查的action列
     action_columns = [
         'sequence_is_click', 'sequence_is_like', 'sequence_is_follow',
@@ -41,8 +45,10 @@ def process_user_sequences(input_csv_path: str, output_csv_path: str):
             
         item_ids = str(row['sequence_item_ids']).split(',')
         is_hate = str(row['sequence_is_hate']).split(',')
+        timestamps = str(row['sequence_timestamps']).split(',')
         
-        # 将所有action列也分割成列表
+        is_recall = str(row['sequence_is_recall_candidate']).split(',') # added by wu
+        
         actions_data = {col: str(row[col]).split(',') for col in action_columns}
         
         before_items = []
@@ -51,7 +57,8 @@ def process_user_sequences(input_csv_path: str, output_csv_path: str):
         
         for i in range(num_interactions):
             try:
-                # --- 条件1: sequence_is_hate == 0 ---
+                '''
+                # 规则 1: 过滤掉 is_hate != 0 的记录
                 if int(is_hate[i]) != 0:
                     continue
 
@@ -65,10 +72,17 @@ def process_user_sequences(input_csv_path: str, output_csv_path: str):
                             action_sum += 1
                     else:
                         action_sum += int(val_str)
-
+                '''
+                action_sum = 0
+                if is_recall[i]=='True': # added by wu
+                    action_sum=1
                 # 如果满足有效互动条件，则根据时间戳分类
                 if action_sum >= 1:
-                    kept_item_ids.append(item_ids[i])
+                    timestamp = int(timestamps[i])
+                    if timestamp < cutoff_timestamp:
+                        before_items.append(item_ids[i])
+                    else:
+                        after_items.append(item_ids[i])
 
             except (IndexError, ValueError) as e:
                 # 警告并跳过格式错误的记录
@@ -192,10 +206,25 @@ def process_and_split_data_parallel(input_files: List[str], train_output_path: s
 
 # --- 使用示例 ---
 if __name__ == '__main__':
-    # 将 'your_input_file.csv' 替换成你的原始文件名
-    input_file = 'seq_data_100k.csv'
+    # 为了让 multiprocessing 在某些操作系统（如Windows）上正常工作，
+    # 必须将主逻辑代码块放在 `if __name__ == '__main__':` 内部。
     
-    # 定义你希望输出的文件名
-    output_file = '1_positive_data_100k.csv'
+    # 定义输入和输出文件
+    # 这里我们假设有4个输入文件，您可以根据实际情况修改
+    #input_file_list = [f'sasrec_format_{i}.csv' for i in range(4)]
+    input_file_list = [os.path.join('/home/jovyan/data/kuairand/KuaiRand-27K-Processed', f'sasrec_format_{i}.csv') for i in range(4)]
+    train_output_file = '1_1_train.csv'
+    test_output_file = '1_1_test.csv'
     
-    process_user_sequences(input_file, output_file)
+    # 定义分割时间戳
+    CUTOFF_TIMESTAMP = 1651795200000
+    
+    # 调用新的并行处理与分割函数
+    # 您可以手动指定进程数，例如 num_processes=4
+    process_and_split_data_parallel(
+        input_files=input_file_list,
+        train_output_path=train_output_file,
+        test_output_path=test_output_file,
+        cutoff_timestamp=CUTOFF_TIMESTAMP,
+        num_processes=4
+    )
