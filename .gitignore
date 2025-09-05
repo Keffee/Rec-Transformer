@@ -26,5 +26,7 @@ data/KuaiRand-27K-no-feature/*.npy
 data/KuaiRand-27K-no-feature/*.json
 data/KuaiRand-27K-no-feature/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default/
 data/KuaiRand-27K-no-feature/
+data/KuaiRand-27K-100krows/
 *.out
-try_train/llama-rec_KuaiRand-27K-no-feature-checkpoints
+try_train/llama-rec_KuaiRand-27K-no-feature-checkpoints/
+try_train/llama-rec-KuaiRand-27K-100krows-36users-checkpoint-20/
