@@ -66,7 +66,7 @@ class TrainDataCollator:
         return batch_dict
 
 # --- [最终版] 评估数据整理器 ---
-
+# same with train
 class EvalDataCollator: 
     def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
         self.tokenizer = tokenizer
