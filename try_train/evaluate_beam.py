@@ -5,9 +5,10 @@ import torch
 from torch.utils.data import DataLoader
 from datasets import load_dataset, Dataset
 from tqdm import tqdm
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional,Iterable
 import warnings
-
+import json
+from utils_metric import eval_from_beams
 # --- 1. 复用你在 train.py 中定义好的核心组件 ---
 #    (为了让脚本独立可运行，我们直接将它们复制过来)
 
@@ -124,15 +125,69 @@ class StreamingMetricsCalculator:
         self.all_ranks = []
         return metrics
 
+def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> torch.Tensor:
+    """
+    Map model outputs [B, nbeam, 3] to [B, nbeam] new ids.
+    No ignore_index applied here.
+    """
+    B, nbeam, T = outputs.shape
+    #assert T == 3
+
+    flat_ids = outputs.detach().cpu().view(-1).tolist()
+    flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*nbeam*3
+    triplets = [tuple(flat_toks[i:i+T]) for i in range(0, len(flat_toks), T)]
+
+    out = torch.full((B, nbeam), -1, dtype=torch.long)
+    idx = 0
+    for b in range(B):
+        for j in range(nbeam):
+            trip = triplets[idx]; idx += 1
+            out[b, j] = tokens2iid.get(trip, -1)  # -1 if not found
+    return out
+
+
+def map_triplets_labels(labels: torch.Tensor, tokenizer, tokens2iid: dict, ignore_index: int = -100) -> torch.Tensor:
+    """
+    Map labels [B, seqlen, 3] to [B, seqlen] new ids.
+    Any triplet containing ignore_index is skipped -> -1.
+    """
+    B, L, T = labels.shape
+    #assert T == 3
+
+    flat_ids = labels.detach().cpu().view(-1).tolist()
+    flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*L*3
+    triplets = [tuple(flat_toks[i:i+T]) for i in range(0, len(flat_toks), T)]
+
+    out = torch.full((B, L), -1, dtype=torch.long)
+    idx = 0
+    for b in range(B):
+        for j in range(L):
+            trip = triplets[idx]; idx += 1
+            # if this label row contains ignore_index anywhere → drop
+            if (labels[b, j] == ignore_index).any():
+                continue
+            out[b, j] = tokens2iid.get(trip, -1)
+    return out
+
 # --- 2. 评估主函数 ---
 def evaluate_checkpoint():
     # <<< 新增: 解析命令行参数以获取配置文件路径 >>>
     parser = argparse.ArgumentParser(description="Train a LlamaRec model using a YAML config file.")
     parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the saved model checkpoint directory.")
     parser.add_argument("--eval_batch_size", type=int, default=128, help="Batch size for evaluation.")
-    
+    parser.add_argument('--rq_map_path', type=str, default='4_item_id_to_rq_code.json',
+                        help="Path to the JSON file mapping original item IDs to RQ codes (e.g., '4_item_id_to_rq_code.json').")
+                        
     parser.add_argument("--config", type=str, required=True, help="Name of the config file to use. For example: pantry")
     cli_args = parser.parse_args()
+
+    with open(cli_args.rq_map_path, "r") as f:
+        iid2tokens = json.load(f)
+
+    tokens2iid = {
+        tuple(map(str, toks)): int(vid)  # assumes all vids are int
+        for vid, toks in iid2tokens.items()
+    }
 
     # <<< 新增: 读取并解析 YAML 配置文件 >>>
     print(f"Loading configuration from: {cli_args.config}")
@@ -226,8 +281,8 @@ def evaluate_checkpoint():
             batch.pop("token_type_ids", None)
             # 2. 获取模型输出
             len_sid = 3
-            num_beam = 5
-            num_return_sequences=5
+            num_beam = 20
+            num_return_sequences=20
             outputs_beam = model.generate(
                 **batch,
                 max_length=len_sid + int(model_params['max_seq_length']),
@@ -242,7 +297,11 @@ def evaluate_checkpoint():
             labels = batch['labels']
             labels = labels.view(cli_args.eval_batch_size,  int(labels.size(1)/3), len_sid) # [B,seq,3]
 
-            eval_pred = EvalPrediction(predictions=logits, label_ids=labels)
+            out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
+            lab_ids = map_triplets_labels(labels, tokenizer, tokens2iid=tokens2iid, ignore_index=-100)
+            eval_pred = eval_from_beams(out_ids, lab_ids[:,-2:], ignore_index=-1, ks=(50,100))            
+            
+            #eval_pred = EvalPrediction(predictions=logits, label_ids=labels)
             
             # 4. 累积指标
             metrics_calculator.accumulate(eval_pred)
