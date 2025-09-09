@@ -32,3 +32,4 @@ try_train/llama-rec_KuaiRand-27K-no-feature-checkpoints/
 try_train/llama-rec-KuaiRand-27K-100krows-36users-checkpoint-20/
 *.pt
 try_train/*checkpoints*/
+/data/KuaiRand-27K-with_feature/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/python/*.log
