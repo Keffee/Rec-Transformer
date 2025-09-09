@@ -31,6 +31,7 @@ parser.add_argument('--state_dict_path', default=None, type=str)
 parser.add_argument('--norm_first', action='store_true', default=False)
 parser.add_argument('--patience', default=5, type=int, help='Number of epochs to wait for improvement before early stopping.')
 parser.add_argument('--feature_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/item_feat_norm.pkl', type=str, help='Path to the item features .pkl file.')
+parser.add_argument('--input_csv_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv', type=str, help='Path to the train csv file.')
 parser.add_argument('--feature_emb_dim', default=5, type=int)
 
 args = parser.parse_args()
@@ -49,7 +50,8 @@ if __name__ == '__main__':
     # dataset = csv_data_partition(csv_file_path)
 
     # 1. 定义你的数据文件所在的目录和文件命名规则
-    input_csv_path = r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv'
+    #input_csv_path = r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv'
+    input_csv_path = args.input_csv_path
     # # 文件名的模板，{}是后续用来填充数字的占位符
     # filename_pattern = "1_positive_data_{}.csv" 
     # # 你想要加载的文件的编号，range(4) 会生成 0, 1, 2, 3
@@ -77,9 +79,25 @@ if __name__ == '__main__':
 
     # num_batch = len(user_train) // args.batch_size # tail? + ((len(user_train) % args.batch_size) != 0)
     num_batch = (len(user_train) - 1) // args.batch_size + 1
+    seqlen = []
     cc = 0.0
     for u in user_train:
         cc += len(user_train[u])
+        seqlen.append(len(user_train[u]))
+    seqlen = np.array(seqlen)
+
+    # 基本统计
+    min_len = seqlen.min()
+    max_len = seqlen.max()
+    q1 = np.percentile(seqlen, 25)  # 第一四分位
+    median = np.percentile(seqlen, 50)  # 中位数
+    q3 = np.percentile(seqlen, 75)  # 第三四分位
+    mean_len = seqlen.mean()
+
+    print(f"min={min_len}, max={max_len}")
+    print(f"Q1={q1}, median={median}, Q3={q3}")
+    print(f"mean={mean_len:.2f}")
+
     print('average sequence length: %.2f' % (cc / len(user_train)))
     
     f = open(os.path.join(args.dataset + '_' + args.train_dir, 'log.txt'), 'w')
