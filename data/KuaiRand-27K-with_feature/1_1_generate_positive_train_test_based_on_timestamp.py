@@ -9,6 +9,7 @@ import numpy as np
 from typing import List, Dict, Any, Tuple
 from functools import partial
 import os
+import argparse
 # --- 步骤 1: 定义核心分析函数，用于第一阶段的并行处理 ---
 def analyze_chunk(df_chunk: pd.DataFrame, cutoff_timestamp: int) -> Tuple[List[Dict[str, Any]], int]:
     """
@@ -206,15 +207,36 @@ def process_and_split_data_parallel(input_files: List[str], train_output_path: s
 
 # --- 使用示例 ---
 if __name__ == '__main__':
-    # 为了让 multiprocessing 在某些操作系统（如Windows）上正常工作，
-    # 必须将主逻辑代码块放在 `if __name__ == '__main__':` 内部。
-    
-    # 定义输入和输出文件
-    # 这里我们假设有4个输入文件，您可以根据实际情况修改
-    #input_file_list = [f'sasrec_format_{i}.csv' for i in range(4)]
-    input_file_list = [os.path.join('../../../../data/kuairand/KuaiRand-27K-Processed', f'sasrec_format_{i}.csv') for i in range(4)]
-    train_output_file = '1_1_train.csv'
-    test_output_file = '1_1_test.csv'
+    parser = argparse.ArgumentParser(description="Preprocess KuaiRand-27K for SASRec")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="KuaiRand-27K",
+        choices=["KuaiRand-27K", "KuaiRand-27K-0501","KuaiRand-27K-100krows"],
+        help="Dataset version to process: 'full' or '0501'"
+    )
+    args = parser.parse_args()
+
+    # Map version → base directory
+    version_map = {
+        "KuaiRand-27K": "../../../../data/kuairand/KuaiRand-27K-Processed",
+        "KuaiRand-27K-0501": "../../../../data/kuairand/KuaiRand-27K-0501-Processed"
+    }
+    base_dir = version_map[args.dataset]
+
+    # 定义输入文件
+    input_file_list = [
+        os.path.join(base_dir, f'sasrec_format_{i}.csv') for i in range(4)
+    ]
+
+    # 创建输出目录 (e.g., output_full, output_0501)
+    output_dir = f"output_{args.dataset}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 定义输出文件
+    train_output_file = os.path.join(output_dir, "1_1_train.csv")
+    test_output_file = os.path.join(output_dir, "1_1_test.csv")
+
     
     # 定义分割时间戳
     CUTOFF_TIMESTAMP = 1651795200000
