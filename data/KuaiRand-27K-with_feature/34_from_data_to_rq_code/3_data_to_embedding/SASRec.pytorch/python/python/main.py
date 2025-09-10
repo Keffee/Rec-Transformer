@@ -16,8 +16,8 @@ def str2bool(s):
     return s == 'true'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', required=True)
-parser.add_argument('--train_dir', required=True,help='The dataset variant name')
+parser.add_argument('--dataset', required=True,choices=["KuaiRand-27K", "KuaiRand-27K-0501","KuaiRand-27K-100krows"])
+#parser.add_argument('--train_dir', required=True,help='The dataset variant name')
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--lr', default=0.0001, type=float)
 parser.add_argument('--maxlen', default=200, type=int)
@@ -38,6 +38,11 @@ parser.add_argument('--feature_emb_dim', default=5, type=int,help='The dim for c
 
 args = parser.parse_args()
 
+base_output_dir = "../../../../output_"+args.dataset
+
+args.feature_path = os.path.join(base_output_dir, "item_feat_norm.pkl")
+args.input_csv_path = os.path.join(base_output_dir, "1_1_train.csv")
+
 # Define finetuned parameters and show them in output folder name. 
 # If already select the best parameter, just remove it.
 run_parts = [
@@ -52,7 +57,7 @@ run_parts = [
 
 # all output files will be saved into run_dir("KuaiRand_27K_default/bs_xxx/"). The datetime is optional. 
 run_name = "_".join(run_parts) #+ "_" + datetime.now().strftime("%Y%m%d")
-run_dir = os.path.join(args.dataset + '_' + args.train_dir, run_name)
+run_dir = os.path.join(f"output_{args.dataset}", run_name)
 os.makedirs(run_dir, exist_ok=True)
 best_model_path = os.path.join(run_dir, "SASRec_best.pth")
 # Save args
@@ -115,16 +120,18 @@ if __name__ == '__main__':
     median = np.percentile(seqlen, 50)  # 中位数
     q3 = np.percentile(seqlen, 75)  # 第三四分位
     mean_len = seqlen.mean()
+    q95 = np.percentile(seqlen, 95)
 
     print(f"min={min_len}, max={max_len}")
-    print(f"Q1={q1}, median={median}, Q3={q3}")
+    print(f"Q1={q1}, median={median}, Q3={q3}, Q95={q95}")
     print(f"mean={mean_len:.2f}")
 
     print('average sequence length: %.2f' % (cc / len(user_train)))
     
     #f = open(os.path.join(args.dataset + '_' + args.train_dir, 'log.txt'), 'w')
     f = open(os.path.join(run_dir, 'log.txt'), 'w')
-    f.write('epoch (val_ndcg, val_hr) (test_ndcg, test_hr)\n')
+    #f.write('epoch (val_ndcg, val_hr) (test_ndcg, test_hr)\n')
+    f.write('epoch (val_ndcg, val_hr)\n')
     
     sampler = WarpSampler(user_train, usernum, itemnum, batch_size=args.batch_size, maxlen=args.maxlen, n_workers=3)
     model = SASRec(usernum, itemnum, args, feature_info=feature_info).to(args.device) # no ReLU activation in original SASRec implementation?
@@ -233,23 +240,26 @@ if __name__ == '__main__':
             T += t1
             print('Evaluating', end='')
             eval_st = time.time()
-            t_test = evaluate(model, dataset, args)
+            #t_test = evaluate(model, dataset, args)
             t_valid = evaluate_valid(model, dataset, args)
-            print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
-                    % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
+            #print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
+            #        % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
+            print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f)'
+                    % (epoch, T, t_valid[0], t_valid[1]))            
             eval_et = time.time()-eval_st
             print(f"eval time: {eval_et:.2f}s")
             writer.add_scalar("Eval/NDCG@10_per_2epoch", t_valid[0], epoch)
             writer.add_scalar("Eval/HR@10_per_2epoch", t_valid[1], epoch)
-            writer.add_scalar("Test/NDCG@10_per_2epoch", t_test[0], epoch)
-            writer.add_scalar("Test/HR@10_per_2epoch", t_test[1], epoch)
+            #writer.add_scalar("Test/NDCG@10_per_2epoch", t_test[0], epoch)
+            #writer.add_scalar("Test/HR@10_per_2epoch", t_test[1], epoch)
 
             # 原有的保存最佳模型的逻辑（当任何一个指标提升时）
-            if t_valid[0] > best_val_ndcg or t_valid[1] > best_val_hr or t_test[0] > best_test_ndcg or t_test[1] > best_test_hr:
+            if t_valid[0] > best_val_ndcg or t_valid[1] > best_val_hr: #or t_test[0] > best_test_ndcg or t_test[1] > best_test_hr:
                 best_val_ndcg = max(t_valid[0], best_val_ndcg)
                 best_val_hr = max(t_valid[1], best_val_hr)
-                best_test_ndcg = max(t_test[0], best_test_ndcg)
-                best_test_hr = max(t_test[1], best_test_hr)
+                #best_test_ndcg = max(t_test[0], best_test_ndcg)
+                #best_test_hr = max(t_test[1], best_test_hr)
+                
                 #folder = args.dataset + '_' + args.train_dir
                 #fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
                 #fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
@@ -276,7 +286,8 @@ if __name__ == '__main__':
                 break # 跳出主训练循环
             # =================================================================
 
-            f.write(str(epoch) + ' ' + str(t_valid) + ' ' + str(t_test) + '\n')
+            #f.write(str(epoch) + ' ' + str(t_valid) + ' ' + str(t_test) + '\n')
+            f.write(str(epoch) + ' ' + str(t_valid) + '\n')
             f.flush()
             t0 = time.time()
             model.train()
@@ -295,7 +306,8 @@ if __name__ == '__main__':
     if 'best_model_path' in locals() and best_model_path:
         #output_folder = args.dataset + '_' + args.train_dir
         #embedding_output_file = os.path.join(output_folder, 'best_item_embeddings.npy')
-        embedding_output_file = os.path.join(run_dir, 'best_item_embeddings.npy')
+        #embedding_output_file = os.path.join(run_dir, 'best_item_embeddings.npy')
+        embedding_output_file = os.path.join(base_output_dir, 'best_item_embeddings.npy')
         # 重新加载最佳模型权重到当前模型结构
         print(f"\n重新加载最佳模型权重从: {best_model_path}")
         model.load_state_dict(torch.load(best_model_path, map_location=torch.device(args.device)))
