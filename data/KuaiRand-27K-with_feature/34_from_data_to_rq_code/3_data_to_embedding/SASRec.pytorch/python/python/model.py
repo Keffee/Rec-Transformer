@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.init as init
-
+from tqdm import tqdm
 # PointWiseFeedForward 保持不变
 class PointWiseFeedForward(torch.nn.Module):
     def __init__(self, hidden_units, dropout_rate):
@@ -140,6 +140,22 @@ class SASRec(torch.nn.Module):
         """为保存 .npy 文件提供接口"""
         all_item_ids = torch.arange(1, self.item_emb.num_embeddings, device=self.dev)
         return self.item_emb_module(all_item_ids)
+
+    def get_all_item_embeddings_batch(self, batch_size=1024):
+        num_items = self.item_emb.num_embeddings
+        all_embeddings = []
+
+        with torch.no_grad():
+            for start in tqdm(range(1, num_items, batch_size), desc="Extracting item embeddings"):
+                end = min(start + batch_size, num_items)   
+                batch_ids = torch.arange(start, end, device=self.dev)
+                batch_emb = self.item_emb_module(batch_ids)
+                all_embeddings.append(batch_emb.cpu())
+
+        all_embeddings = torch.cat(all_embeddings, dim=0)  
+
+        return all_embeddings
+
 
     def log2feats(self, log_seqs):
         # 使用 item_emb_module 获取增强嵌入

@@ -398,3 +398,21 @@ def extract_and_save_item_embeddings(model, output_path):
     print(f"成功提取 {item_embeddings_np.shape[0]} 个物品的增强嵌入，维度为 {item_embeddings_np.shape[1]}")
     print(f"嵌入已保存到: {output_path}")
     print(f"--- 提取完成 ---")
+
+def extract_and_save_item_embeddings_batch(model, output_path):
+    """
+    从训练好的模型中提取最终的、特征增强的物品嵌入。
+    """
+    print(f"\n--- 开始提取特征增强的物品嵌入 ---")
+    model.eval()
+
+    # 使用模型提供的方法获取所有物品的最终嵌入
+    with torch.no_grad():
+        item_embeddings = model.get_all_item_embeddings_batch(batch_size=500000)
+    
+    item_embeddings_np = item_embeddings.cpu().numpy()
+    np.save(output_path, item_embeddings_np)
+    
+    print(f"成功提取 {item_embeddings_np.shape[0]} 个物品的增强嵌入，维度为 {item_embeddings_np.shape[1]}")
+    print(f"嵌入已保存到: {output_path}")
+    print(f"--- 提取完成 ---")

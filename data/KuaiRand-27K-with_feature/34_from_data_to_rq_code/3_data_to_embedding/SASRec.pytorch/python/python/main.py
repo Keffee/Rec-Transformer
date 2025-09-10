@@ -312,10 +312,14 @@ if __name__ == '__main__':
         print(f"\n重新加载最佳模型权重从: {best_model_path}")
         model.load_state_dict(torch.load(best_model_path, map_location=torch.device(args.device)))
 
-        extract_and_save_item_embeddings(
+        #extract_and_save_item_embeddings(
+        #    model=model,
+        #    output_path=embedding_output_file
+        #)
+        extract_and_save_item_embeddings_batch(
             model=model,
             output_path=embedding_output_file
-        )
+        )        
     else:
         print("\n训练期间没有保存任何最佳模型，跳过嵌入提取步骤。")
     print("Done")
