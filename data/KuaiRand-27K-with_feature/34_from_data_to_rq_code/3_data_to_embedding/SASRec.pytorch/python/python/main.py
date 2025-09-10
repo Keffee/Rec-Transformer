@@ -7,7 +7,9 @@ import argparse
 from model import SASRec
 from utils import *
 from tqdm import tqdm
-
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+import torch.nn as nn
 def str2bool(s):
     if s not in {'false', 'true'}:
         raise ValueError('Not a valid boolean string')
@@ -15,7 +17,7 @@ def str2bool(s):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True)
-parser.add_argument('--train_dir', required=True)
+parser.add_argument('--train_dir', required=True,help='The dataset variant name')
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--lr', default=0.0001, type=float)
 parser.add_argument('--maxlen', default=200, type=int)
@@ -32,15 +34,36 @@ parser.add_argument('--norm_first', action='store_true', default=False)
 parser.add_argument('--patience', default=5, type=int, help='Number of epochs to wait for improvement before early stopping.')
 parser.add_argument('--feature_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/item_feat_norm.pkl', type=str, help='Path to the item features .pkl file.')
 parser.add_argument('--input_csv_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv', type=str, help='Path to the train csv file.')
-parser.add_argument('--feature_emb_dim', default=5, type=int)
+parser.add_argument('--feature_emb_dim', default=5, type=int,help='The dim for context feature.')
 
 args = parser.parse_args()
-if not os.path.isdir(args.dataset + '_' + args.train_dir):
-    os.makedirs(args.dataset + '_' + args.train_dir)
-with open(os.path.join(args.dataset + '_' + args.train_dir, 'args.txt'), 'w') as f:
-    f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-f.close()
 
+# Define finetuned parameters and show them in output folder name. 
+# If already select the best parameter, just remove it.
+run_parts = [
+    f"bs{args.batch_size}",
+    f"lr{str(args.lr)}",
+    f"L{args.maxlen}",
+    f"d{args.hidden_units}",
+    f"blk{args.num_blocks}",
+    f"h{args.num_heads}",
+    f"fd{args.feature_emb_dim}",
+]
+
+# all output files will be saved into run_dir("KuaiRand_27K_default/bs_xxx/"). The datetime is optional. 
+run_name = "_".join(run_parts) #+ "_" + datetime.now().strftime("%Y%m%d")
+run_dir = os.path.join(args.dataset + '_' + args.train_dir, run_name)
+os.makedirs(run_dir, exist_ok=True)
+best_model_path = os.path.join(run_dir, "SASRec_best.pth")
+# Save args
+with open(os.path.join(run_dir, 'args.txt'), 'w') as f:
+    f.write('\n'.join([f"{k},{v}" for k, v in sorted(vars(args).items())]))
+
+# tensorboard folder
+tblog_dir = os.path.join(run_dir, 'tblog')
+if not os.path.exists(tblog_dir):
+    os.makedirs(tblog_dir)    
+writer = SummaryWriter(log_dir=tblog_dir)
 
 if __name__ == '__main__':
     # # global dataset
@@ -51,14 +74,13 @@ if __name__ == '__main__':
 
     # 1. 定义你的数据文件所在的目录和文件命名规则
     #input_csv_path = r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv'
-    input_csv_path = args.input_csv_path
     # # 文件名的模板，{}是后续用来填充数字的占位符
     # filename_pattern = "1_positive_data_{}.csv" 
     # # 你想要加载的文件的编号，range(4) 会生成 0, 1, 2, 3
     # file_indices_to_load = range(4) 
 
     # 2. 调用新函数来加载并合并指定的数据文件
-    combined_data_df = load_single_file_as_dataframe(input_csv_path)
+    combined_data_df = load_single_file_as_dataframe(args.input_csv_path)
 
     # 3. 检查数据是否成功加载，然后传递给处理函数
     if combined_data_df is not None:
@@ -100,7 +122,8 @@ if __name__ == '__main__':
 
     print('average sequence length: %.2f' % (cc / len(user_train)))
     
-    f = open(os.path.join(args.dataset + '_' + args.train_dir, 'log.txt'), 'w')
+    #f = open(os.path.join(args.dataset + '_' + args.train_dir, 'log.txt'), 'w')
+    f = open(os.path.join(run_dir, 'log.txt'), 'w')
     f.write('epoch (val_ndcg, val_hr) (test_ndcg, test_hr)\n')
     
     sampler = WarpSampler(user_train, usernum, itemnum, batch_size=args.batch_size, maxlen=args.maxlen, n_workers=3)
@@ -117,7 +140,26 @@ if __name__ == '__main__':
 
     # this fails embedding init 'Embedding' object has no attribute 'dim'
     # model.apply(torch.nn.init.xavier_uniform_)
-    
+
+    def count_dense_sparse_in_m(model):
+        total, dense, sparse = 0, 0, 0
+        for module in model.modules():
+            if isinstance(module, nn.Embedding):
+                for name, param in module.named_parameters(recurse=False):
+                    sparse += param.numel()
+            else:
+                for name, param in module.named_parameters(recurse=False):
+                    dense += param.numel()
+        total = dense + sparse
+
+        print(f"Total params : {total/1e6:.3f} M")
+        print(f"Dense params : {dense/1e6:.3f} M")
+        print(f"Sparse params: {sparse/1e6:.3f} M")
+
+        return total, dense, sparse
+
+    count_dense_sparse_in_m(model)
+
     model.train() # enable model training
     
     epoch_start_idx = 1
@@ -153,7 +195,7 @@ if __name__ == '__main__':
     # 我们将使用验证集上的 NDCG@10 作为早停的监控指标
     best_metric_for_early_stop = 0 
     # =================================================================
-
+    running_loss, global_step = 0.0, 1 
     for epoch in range(epoch_start_idx, args.num_epochs + 1):
         if args.inference_only: break # just to decrease identition
         for step in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b'):
@@ -180,16 +222,27 @@ if __name__ == '__main__':
             adam_optimizer.step()
             # 移除这行打印可以加速训练
             # print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
-
+            running_loss += loss.item()
+            avg_loss = running_loss / global_step
+            writer.add_scalar("Loss/Avg_per_step", avg_loss, global_step)
+            global_step+=1
+            
         if epoch % 2 == 0:
             model.eval()
             t1 = time.time() - t0
             T += t1
             print('Evaluating', end='')
+            eval_st = time.time()
             t_test = evaluate(model, dataset, args)
             t_valid = evaluate_valid(model, dataset, args)
             print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
                     % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
+            eval_et = time.time()-eval_st
+            print(f"eval time: {eval_et:.2f}s")
+            writer.add_scalar("Eval/NDCG@10_per_2epoch", t_valid[0], epoch)
+            writer.add_scalar("Eval/HR@10_per_2epoch", t_valid[1], epoch)
+            writer.add_scalar("Test/NDCG@10_per_2epoch", t_test[0], epoch)
+            writer.add_scalar("Test/HR@10_per_2epoch", t_test[1], epoch)
 
             # 原有的保存最佳模型的逻辑（当任何一个指标提升时）
             if t_valid[0] > best_val_ndcg or t_valid[1] > best_val_hr or t_test[0] > best_test_ndcg or t_test[1] > best_test_hr:
@@ -197,14 +250,16 @@ if __name__ == '__main__':
                 best_val_hr = max(t_valid[1], best_val_hr)
                 best_test_ndcg = max(t_test[0], best_test_ndcg)
                 best_test_hr = max(t_test[1], best_test_hr)
-                folder = args.dataset + '_' + args.train_dir
-                fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
-                fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
-
-                best_model_path = os.path.join(folder, fname)
-                print(f"New best model found. Saving to {best_model_path}")
-                torch.save(model.state_dict(), os.path.join(folder, fname))
-            
+                #folder = args.dataset + '_' + args.train_dir
+                #fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
+                #fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
+                #best_model_path = os.path.join(folder, fname)
+                #print(f"New best model found. Saving to {best_model_path}")
+                #torch.save(model.state_dict(), os.path.join(folder, fname))
+                # only save one best model into run_dir
+                
+                print(f"New best model found. Saving to {run_dir}")
+                torch.save(model.state_dict(), best_model_path)
             # =================================================================
             # 新增：早停判断逻辑
             current_metric = t_valid[0] # 使用验证集 NDCG@10
@@ -227,20 +282,20 @@ if __name__ == '__main__':
             model.train()
     
         if epoch == args.num_epochs:
-            folder = args.dataset + '_' + args.train_dir
-            fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
-            fname = fname.format(args.num_epochs, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
-            torch.save(model.state_dict(), os.path.join(folder, fname))
-    
+            #folder = args.dataset + '_' + args.train_dir
+            #fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
+            #fname = fname.format(args.num_epochs, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
+            #torch.save(model.state_dict(), os.path.join(folder, fname))
+            torch.save(model.state_dict(), os.path.join(run_dir, "SASRec_best.pth"))
     print("Training finished.") # 新增：告知训练结束
     f.close()
     sampler.close()
 
     # --- MODIFICATION 3: 在所有流程结束后，调用嵌入提取函数 ---
     if 'best_model_path' in locals() and best_model_path:
-        output_folder = args.dataset + '_' + args.train_dir
-        embedding_output_file = os.path.join(output_folder, 'best_item_embeddings.npy')
-        
+        #output_folder = args.dataset + '_' + args.train_dir
+        #embedding_output_file = os.path.join(output_folder, 'best_item_embeddings.npy')
+        embedding_output_file = os.path.join(run_dir, 'best_item_embeddings.npy')
         # 重新加载最佳模型权重到当前模型结构
         print(f"\n重新加载最佳模型权重从: {best_model_path}")
         model.load_state_dict(torch.load(best_model_path, map_location=torch.device(args.device)))
