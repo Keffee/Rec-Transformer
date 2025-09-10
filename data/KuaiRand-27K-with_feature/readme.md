@@ -12,13 +12,19 @@ The structure in this folder is like this:
 
 ```bash
 .KuaiRand-27K-with_feature
-| |____34_from_data_to_rq_code
-| |____readme.md
-| |____1_1_generate_positive_train_test_based_on_timestamp.py
-| |____5_generate_rq_codes_pt_data.py
-| |____6_data_transform_from_pt_json_2_train_test_parquet.py
-| |____output_KuaiRand-27K-0501
-|____READMES.md
+|____34_from_data_to_rq_code
+| |____3_data_to_embedding
+| |____4_embedidng_to_rq_code
+|____readme.md
+|____1_1_generate_positive_train_test_based_on_timestamp.py
+|____5_generate_rq_codes_pt_data.py
+|____6_data_transform_from_pt_json_2_train_test_parquet.py
+|____output_KuaiRand-27K-0501
+| |____1_1_train.csv
+| |____1_1_test.csv
+| |____dnn_feature_columns.pkl
+| |____item_feat_norm.pkl
+| |____user_feat_norm.pkl
 ```
 
 All the output will be saved under folder `output_{dataset}`. dataset can be `["KuaiRand-27K", "KuaiRand-27K-0501","KuaiRand-27K-100krows"]`
