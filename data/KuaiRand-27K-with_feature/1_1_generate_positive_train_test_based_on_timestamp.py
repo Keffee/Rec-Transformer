@@ -164,13 +164,15 @@ def process_and_split_data_parallel(input_files: List[str], train_output_path: s
     for user_record in all_processed_users:
         user_id = user_record['user_id']
         before_items = user_record['before_items']
+        # 对 'before' 和 'after' 中的 ID 进行 +1 操作
+        incremented_before_items = [str(int(item) + 1) for item in before_items]
         after_items = user_record['after_items']
 
         # 生成训练数据：只要 'before' 序列不为空，就加入训练集
         if before_items:
             train_data.append({
                 'user_id': user_id,
-                'sequence_item_ids': ",".join(before_items)
+                'sequence_item_ids': ",".join(incremented_before_items)
             })
 
         # 生成测试数据：'before' 序列作为输入，'after' 序列作为目标（需要填充）
@@ -181,7 +183,7 @@ def process_and_split_data_parallel(input_files: List[str], train_output_path: s
             padded_after_items = after_items + ['0'] * padding_needed
             
             # 测试集的序列是 'before' 和 填充后 'after' 的拼接
-            test_sequence = before_items + padded_after_items
+            test_sequence = incremented_before_items + padded_after_items
             
             test_data.append({
                 'user_id': user_id,

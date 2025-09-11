@@ -60,7 +60,7 @@ def convert_sequences(args):
 
         for item_id in original_ids:
             # item_id 在CSV中是字符串，正好可以作为JSON加载的字典的键
-            rq_codes = rq_code_map.get(item_id)
+            rq_codes = rq_code_map.get(item_id-1)
 
             if rq_codes:
                 # 如果找到了对应的编码，就将其加入最终序列

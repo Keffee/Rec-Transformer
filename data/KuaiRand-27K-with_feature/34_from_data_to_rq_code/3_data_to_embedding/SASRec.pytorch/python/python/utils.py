@@ -132,46 +132,46 @@ def load_single_file_as_dataframe(input_csv_path: str):
 # --- 第2步：数据处理函数 (与之前的版本相同，无需修改) ---
 # 这些函数接收DataFrame作为输入，因此可以复用
 
-# --- 已修改：适配 0-based ID ---
-def build_indices_from_dataframe(df):
-    """
-    从合并后的DataFrame中构建 u2i 和 i2u 索引。
-    此版本会自动将 0-based ID 转换为 1-based ID (通过将所有 ID 加 1)。
-    """
-    print("正在从DataFrame构建索引 (将 0-based ID 转换为 1-based)...")
-    df.dropna(subset=['user_id', 'sequence_item_ids'], inplace=True)
-    df = df[df['sequence_item_ids'] != ''].copy()
+# # --- 已修改：适配 0-based ID ---
+# def build_indices_from_dataframe(df):
+#     """
+#     从合并后的DataFrame中构建 u2i 和 i2u 索引。
+#     此版本会自动将 0-based ID 转换为 1-based ID (通过将所有 ID 加 1)。
+#     """
+#     print("正在从DataFrame构建索引 (将 0-based ID 转换为 1-based)...")
+#     df.dropna(subset=['user_id', 'sequence_item_ids'], inplace=True)
+#     df = df[df['sequence_item_ids'] != ''].copy()
 
-    # --- 修改点开始 ---
-    # 将 user_id 加 1
-    df['user_id'] = df['user_id'].astype(int) + 1
-    # 将 sequence_item_ids 中的每个 item_id 加 1
-    df['sequence_item_ids'] = df['sequence_item_ids'].apply(
-        lambda x: ','.join([str(int(i) + 1) for i in x.split(',')])
-    )
-    # --- 修改点结束 ---
+#     # --- 修改点开始 ---
+#     # 将 user_id 加 1
+#     df['user_id'] = df['user_id'].astype(int) + 1
+#     # 将 sequence_item_ids 中的每个 item_id 加 1
+#     df['sequence_item_ids'] = df['sequence_item_ids'].apply(
+#         lambda x: ','.join([str(int(i) + 1) for i in x.split(',')])
+#     )
+#     # --- 修改点结束 ---
     
-    if df.empty:
-        print("警告：DataFrame为空，无法构建索引。")
-        return [], []
+#     if df.empty:
+#         print("警告：DataFrame为空，无法构建索引。")
+#         return [], []
 
-    n_users = df['user_id'].max()
-    all_items_series = df['sequence_item_ids'].str.split(',').explode()
-    n_items = pd.to_numeric(all_items_series, errors='coerce').max()
-    print(f"数据转换后，发现 {n_users} 个用户和 {n_items} 个物品 (ID 从 1 开始)。")
+#     n_users = df['user_id'].max()
+#     all_items_series = df['sequence_item_ids'].str.split(',').explode()
+#     n_items = pd.to_numeric(all_items_series, errors='coerce').max()
+#     print(f"数据转换后，发现 {n_users} 个用户和 {n_items} 个物品 (ID 从 1 开始)。")
     
-    u2i_index = [[] for _ in range(n_users + 1)]
-    i2u_index = [[] for _ in range(n_items + 1)]
+#     u2i_index = [[] for _ in range(n_users + 1)]
+#     i2u_index = [[] for _ in range(n_items + 1)]
     
-    for _, row in df.iterrows():
-        # 此处的 user_id 和 item_ids 已经是 1-based
-        user_id = row['user_id']
-        item_ids = [int(item) for item in str(row['sequence_item_ids']).split(',')]
-        u2i_index[user_id].extend(item_ids)
-        for item_id in item_ids:
-            i2u_index[item_id].append(user_id)
+#     for _, row in df.iterrows():
+#         # 此处的 user_id 和 item_ids 已经是 1-based
+#         user_id = row['user_id']
+#         item_ids = [int(item) for item in str(row['sequence_item_ids']).split(',')]
+#         u2i_index[user_id].extend(item_ids)
+#         for item_id in item_ids:
+#             i2u_index[item_id].append(user_id)
             
-    return u2i_index, i2u_index
+#     return u2i_index, i2u_index
 
 # --- 已修改：适配 0-based ID ---
 def partition_data_from_dataframe(df):
@@ -188,7 +188,7 @@ def partition_data_from_dataframe(df):
         # --- 修改点开始 ---
         # 读取原始 ID 并加 1
         user_id = int(row['user_id']) + 1
-        sequence_items = [int(item) + 1 for item in str(row['sequence_item_ids']).split(',')]
+        sequence_items = [int(item) for item in str(row['sequence_item_ids']).split(',')]
         # --- 修改点结束 ---
         
         if user_id in User:
