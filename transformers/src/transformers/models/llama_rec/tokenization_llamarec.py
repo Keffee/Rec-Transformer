@@ -40,7 +40,8 @@ def create_rq_code_tokenizer(dataset: Dataset, training_args: MockTrainingArgume
             all_rq_tokens.update(tokens)
         else:
             logging.warning(f"Row skipped: 'text' not found or not a string in row: {row}")
-    
+    if "[PAD]" in all_rq_tokens:
+        all_rq_tokens.remove("[PAD]")
     # 排序以保证每次生成的词汇表 ID 映射一致
     sorted_unique_tokens = sorted(list(all_rq_tokens))
     logging.info(f"Found {len(sorted_unique_tokens)} unique RQ code tokens.")
