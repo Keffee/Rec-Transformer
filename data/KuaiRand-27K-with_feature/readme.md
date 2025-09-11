@@ -89,7 +89,7 @@ CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
   > output_KuaiRand-27K-0501/log_${DATASET}_bs${BS}_d${D}_lr${LR}_emb${NUM_EMB_LIST// /-}.out 2>&1 &
 ```
 
-会在此目录下生成`rqvae_output`文件夹，并包含`original_item_id_to_rq_code.json`文件，此文件正是原本的正样例序列中的item_id到rq_code的映射，复制到`output_KuaiRand-27K-0501`目录下重命名为`4_item_id_to_rq_code.json`.
+会在此目录下生成`rqvae_output`文件夹，并包含`original_item_id_to_rq_code.json`文件，此文件正是原本的正样例序列中的item_id到rq_code的映射，choose the best one 复制到`output_KuaiRand-27K-0501`目录下
 
 4. 在本目录下运行
 

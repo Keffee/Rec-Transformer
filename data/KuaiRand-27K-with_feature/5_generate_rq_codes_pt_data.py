@@ -129,8 +129,8 @@ if __name__ == '__main__':
     test_output_path = os.path.join(base_dir, "5_test_rq_codes_pt_data.json")
 
 
-    input_json = os.path.join(base_dir, "4_item_id_to_rq_code.json")
-    output_json = os.path.join(base_dir, "4_item_id_to_rq_code_shifted.json")
+    input_json = os.path.join(base_dir, "original_item_id_to_rq_code.json")
+    output_json = os.path.join(base_dir, "4_item_id_to_rq_code.json")
 
     if not os.path.exists(output_json):
 
