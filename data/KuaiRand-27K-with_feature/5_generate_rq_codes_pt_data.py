@@ -53,11 +53,10 @@ def convert_sequences(args):
         
         full_sequence_codes = []
 
-
         # 假设固定的 rq_codes
         #fixed_rq_codes = ["<a_256>", "<b_256>", "<c_256>"]  # 根据需要替换为你的固定值
-        fixed_rq_codes = ["[UNK]", "[UNK]", "[UNK]"]  # 根据需要替换为你的固定值
-        pad_codes = ["[PAD]", "[PAD]", "[PAD]"]  # 根据需要替换为你的固定值
+        fixed_rq_codes = ["[UNK]"] * args.codelen  # 根据需要替换为你的固定值
+        pad_codes = ["[PAD]"] * args.codelen  # 根据需要替换为你的固定值
 
         for item_id in original_ids:
             # item_id 在CSV中是字符串，正好可以作为JSON加载的字典的键
@@ -67,17 +66,16 @@ def convert_sequences(args):
                 # 如果找到了对应的编码，就将其加入最终序列
                 full_sequence_codes.extend(rq_codes)
             else:
-                # 如果某个ID在映射文件中不存在，则记录下来并跳过
-                missing_ids.add(item_id)
-
                 # 检查 rq_codes 是否为 0
-                if item_id == 0:
+                if item_id == "0":
                     # 填充与其他 rq_codes 相同长度的 0
                     # 假设其他 rq_codes 的长度为 len(other_rq_codes)
-                    length_of_other_rq_codes = 3  # 如果 rq_codes 为空，则长度为 0
+                    #length_of_other_rq_codes = 3  # 如果 rq_codes 为空，则长度为 0
                     #full_sequence_codes.extend([0] * length_of_other_rq_codes)
                     full_sequence_codes.extend(pad_codes)
                 else:
+                    # 如果某个ID在映射文件中不存在，则记录下来并跳过
+                    missing_ids.add(item_id)
                     # 使用固定的 rq_codes 填充
                     full_sequence_codes.extend(fixed_rq_codes)
         
@@ -99,7 +97,9 @@ def convert_sequences(args):
     # --- 第4步: 将最终结果保存为JSON文件 ---
     print(f"\n转换完成，共生成 {len(final_output_list)} 条编码序列。")
     print(f"正在将结果保存到: {args.output_path}")
-    
+    print('one sample first 30 tokens: ', final_output_list[0]['text'].split()[:30])
+    print('one sample last 30 tokens: ', final_output_list[0]['text'].split()[-30:])   
+
     try:
         with open(args.output_path, 'w', encoding='utf-8') as f:
             # 使用indent=2可以让输出的JSON文件格式优美，易于阅读
@@ -114,31 +114,52 @@ if __name__ == '__main__':
 
     parser.add_argument('--dataset', type=str, required=True,
                         help="Dataset name, e.g., KuaiRand-27K-0501")
+    
+    parser.add_argument('--codelen', type=int, default=3,
+                        help="Number of rq_codes per item (default: 3)")
 
     args = parser.parse_args()
 
     # Base directory: output_{dataset}
     base_dir = f"output_{args.dataset}"
 
-    rq_map_path = os.path.join(base_dir, "4_item_id_to_rq_code.json")
     train_sequence_path = os.path.join(base_dir, "1_1_train.csv")
     test_sequence_path = os.path.join(base_dir, "1_1_test.csv")
     train_output_path = os.path.join(base_dir, "5_train_rq_codes_pt_data.json")
     test_output_path = os.path.join(base_dir, "5_test_rq_codes_pt_data.json")
 
+
+    input_json = os.path.join(base_dir, "4_item_id_to_rq_code.json")
+    output_json = os.path.join(base_dir, "4_item_id_to_rq_code_shifted.json")
+
+    if not os.path.exists(output_json):
+
+        with open(input_json, "r", encoding="utf-8") as f:
+            rq_code_map = json.load(f)
+
+        # shift keys
+        shifted_map = {str(int(k) + 1): v for k, v in rq_code_map.items()}
+
+        with open(output_json, "w", encoding="utf-8") as f:
+            json.dump(shifted_map, f, ensure_ascii=False, indent=2)
+
+        print(f"Shifted rq_code_map saved to {output_json}")
+
     # --- Run for train ---
     train_args = argparse.Namespace(
-        rq_map_path=rq_map_path,
+        rq_map_path=output_json,
         sequence_data_path=train_sequence_path,
-        output_path=train_output_path
+        output_path=train_output_path,
+        codelen=args.codelen
     )
     convert_sequences(train_args)
 
     # --- Run for test ---
     test_args = argparse.Namespace(
-        rq_map_path=rq_map_path,
+        rq_map_path=output_json,
         sequence_data_path=test_sequence_path,
-        output_path=test_output_path
+        output_path=test_output_path,
+        codelen=args.codelen        
     )
     convert_sequences(test_args)
 
