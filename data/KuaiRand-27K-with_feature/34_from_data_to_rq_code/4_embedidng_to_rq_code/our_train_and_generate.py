@@ -101,11 +101,15 @@ if __name__ == '__main__':
 
     # Define finetuned parameters and show them in output folder name. 
     # If already select the best parameter, just remove it.
+    num_emb_str = "-".join(map(str, args.num_emb_list))
+
     run_parts = [
         f"bs{args.batch_size}",
         f"d{args.e_dim}",
         f"lr{str(args.lr)}",
+        f"emb{num_emb_str}",
     ]
+
     run_name = "_".join(run_parts)
     run_dir = os.path.join(f"output_{args.dataset}", run_name)
     os.makedirs(run_dir, exist_ok=True)
