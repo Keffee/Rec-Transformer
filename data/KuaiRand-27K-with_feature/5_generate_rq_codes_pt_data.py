@@ -2,7 +2,7 @@ import argparse
 import json
 import pandas as pd
 from tqdm import tqdm
-
+import os
 def convert_sequences(args):
     """
     将物品ID序列转换为RQ编码序列。
@@ -111,6 +111,39 @@ def convert_sequences(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Convert item ID sequences to RQ code sequences.")
+
+    parser.add_argument('--dataset', type=str, required=True,
+                        help="Dataset name, e.g., KuaiRand-27K-0501")
+
+    args = parser.parse_args()
+
+    # Base directory: output_{dataset}
+    base_dir = f"output_{args.dataset}"
+
+    rq_map_path = os.path.join(base_dir, "4_item_id_to_rq_code.json")
+    train_sequence_path = os.path.join(base_dir, "1_1_train.csv")
+    test_sequence_path = os.path.join(base_dir, "1_1_test.csv")
+    train_output_path = os.path.join(base_dir, "5_train_rq_codes_pt_data.json")
+    test_output_path = os.path.join(base_dir, "5_test_rq_codes_pt_data.json")
+
+    # --- Run for train ---
+    train_args = argparse.Namespace(
+        rq_map_path=rq_map_path,
+        sequence_data_path=train_sequence_path,
+        output_path=train_output_path
+    )
+    convert_sequences(train_args)
+
+    # --- Run for test ---
+    test_args = argparse.Namespace(
+        rq_map_path=rq_map_path,
+        sequence_data_path=test_sequence_path,
+        output_path=test_output_path
+    )
+    convert_sequences(test_args)
+
+    '''
+    parser = argparse.ArgumentParser(description="Convert item ID sequences to RQ code sequences.")
     
     #parser.add_argument('--sequence_data_path', type=str, default='1_positive_data_100k.csv',
     #                    help="Path to the input CSV file with item sequences (e.g., '1_positive_data_100k.csv').")
@@ -125,3 +158,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     convert_sequences(args)
+    '''
