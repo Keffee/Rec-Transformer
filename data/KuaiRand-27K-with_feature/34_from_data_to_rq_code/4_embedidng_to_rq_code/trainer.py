@@ -184,7 +184,7 @@ class Trainer(object):
         return train_loss_output + "]"
 
 
-    def fit(self, data):
+    def fit(self, data, writer):
 
         cur_eval_step = 0
 
@@ -198,11 +198,15 @@ class Trainer(object):
             )
             self.logger.info(train_loss_output)
 
+            writer.add_scalar("Loss/train", train_loss, epoch_idx)
+            writer.add_scalar("Loss/train_recon", train_recon_loss, epoch_idx)
 
             # eval
             if (epoch_idx + 1) % self.eval_step == 0:
                 valid_start_time = time()
                 collision_rate = self._valid_epoch(data)
+
+                writer.add_scalar("Metric/collision_rate", collision_rate, epoch_idx)
 
                 if train_loss < self.best_loss:
                     self.best_loss = train_loss
@@ -216,6 +220,7 @@ class Trainer(object):
                 else:
                     cur_eval_step += 1
 
+                self.logger.info(f"cur_eval_step: {cur_eval_step}")
 
                 valid_end_time = time()
                 valid_score_output = (
@@ -246,7 +251,13 @@ class Trainer(object):
                     if old_save not in self.best_save_heap:
                         delete_file(old_save[1])
 
-
+            # --- early stopping ---
+            if cur_eval_step >= self.args.patience:
+                self.logger.info(
+                    f"Early stopping at epoch {epoch_idx} with best loss {self.best_loss:.4f}, "
+                    f"best collision_rate {self.best_collision_rate:.4f}"
+                )
+                break
 
         return self.best_loss, self.best_collision_rate
 

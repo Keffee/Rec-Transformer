@@ -12,7 +12,7 @@ from tqdm import tqdm
 from models.rqvae import RQVAE
 from trainer import Trainer # 假设您的 Trainer 类在这里
 from collections import Counter
-
+from torch.utils.tensorboard import SummaryWriter
 #
 # --- 第1部分: 脚本设置和辅助函数 ---
 #
@@ -20,6 +20,8 @@ from collections import Counter
 def parse_args():
     parser = argparse.ArgumentParser(description="Train RQ-VAE and Generate Codes from Embeddings")
 
+    parser.add_argument('--dataset', required=True,choices=["KuaiRand-27K", "KuaiRand-27K-0501","KuaiRand-27K-100krows"])
+    
     # --- 输入/输出路径参数 ---
     parser.add_argument("--sasrec_emb_path", type=str, default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/item_embeddings_24epoch.npy',
                         help="Path to the item embeddings .npy file. Assumes index corresponds to original item ID.")
@@ -40,6 +42,7 @@ def parse_args():
     parser.add_argument("--weight_decay", type=float, default=0.0, help='l2 regularization weight')
     parser.add_argument("--device", type=str, default="cuda:0", help="gpu or cpu")
     parser.add_argument('--save_limit', type=int, default=5)
+    parser.add_argument('--patience', default=5, type=int, help='Number of epochs to wait for improvement before early stopping.')
 
 
     # --- RQ-VAE 模型特定参数 ---
@@ -93,8 +96,34 @@ if __name__ == '__main__':
     print("==================================================")
 
     # 准备输出目录
-    os.makedirs(args.output_dir, exist_ok=True)
+    #os.makedirs(args.output_dir, exist_ok=True)
+    #os.makedirs(args.ckpt_dir, exist_ok=True)
+
+    # Define finetuned parameters and show them in output folder name. 
+    # If already select the best parameter, just remove it.
+    run_parts = [
+        f"bs{args.batch_size}",
+        f"d{args.e_dim}",
+        f"lr{str(args.lr)}",
+    ]
+    run_name = "_".join(run_parts)
+    run_dir = os.path.join(f"output_{args.dataset}", run_name)
+    os.makedirs(run_dir, exist_ok=True)
+
     os.makedirs(args.ckpt_dir, exist_ok=True)
+    # tensorboard folder
+    tblog_dir = os.path.join(run_dir, 'tblog')
+    if not os.path.exists(tblog_dir):
+        os.makedirs(tblog_dir)    
+    writer = SummaryWriter(log_dir=tblog_dir)
+
+    args.ckpt_dir = os.path.join(run_dir, 'rqvae_checkpoints')
+    os.makedirs(args.ckpt_dir, exist_ok=True)
+    
+    args.output_dir = os.path.join(run_dir, 'rqvae_output')
+    os.makedirs(args.output_dir, exist_ok=True) 
+    base_output_dir = "../../output_"+args.dataset
+    args.sasrec_emb_path=os.path.join(base_output_dir,"item_embeddings_sasrec.npy")
 
 
     # --- 训练阶段 ---
@@ -131,7 +160,7 @@ if __name__ == '__main__':
 
     # 4. 训练模型
     trainer = Trainer(args, model, len(data_loader))
-    best_loss, best_collision_rate = trainer.fit(data_loader)
+    best_loss, best_collision_rate = trainer.fit(data_loader, writer)
     logging.info(f"Training finished. Best Loss: {best_loss:.6f}, Best Collision Rate: {best_collision_rate:.6f}")
 
 
@@ -144,7 +173,9 @@ if __name__ == '__main__':
         raise FileNotFoundError(f"Could not find the best model at '{best_model_path}'. Please check your Trainer's save logic.")
 
     logging.info(f"Loading best trained model from: {best_model_path}")
-    ckpt = torch.load(best_model_path, map_location=torch.device('cpu'))
+    #ckpt = torch.load(best_model_path, map_location=torch.device('cpu'))
+    ckpt = torch.load(best_model_path, map_location=torch.device('cpu'),weights_only=False)
+     
     model.load_state_dict(ckpt["state_dict"])
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     model = model.to(device)

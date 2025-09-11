@@ -35,11 +35,19 @@ if __name__ == '__main__':
     # dataset = csv_data_partition(csv_file_path)
 
     # 1. 定义你的数据文件所在的目录和文件命名规则
-    input_csv_path = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv'
+    #input_csv_path = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv'
+    base_output_dir = "../../../../output_"+args.dataset
+    input_csv_path = os.path.join(base_output_dir, "1_1_train.csv")
+    embedding_output_file = os.path.join(base_output_dir, "item_embeddings_sasrec.npy")
+    args.feature_path = os.path.join(base_output_dir, "item_feat_norm.pkl")
     # # 文件名的模板，{}是后续用来填充数字的占位符
     # filename_pattern = "1_positive_data_{}.csv" 
     # # 你想要加载的文件的编号，range(4) 会生成 0, 1, 2, 3
     # file_indices_to_load = range(4) 
+    best_model_path = r'/home/jovyan/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-with_feature/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/python/output_KuaiRand-27K-0501/bs80_lr0.0001_L2000_d128_blk2_h1_fd64/SASRec_best.pth'
+
+    #embedding_output_file = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/item_embeddings_24epoch.npy'
+
 
     # 2. 调用新函数来加载并合并指定的数据文件
     combined_data_df = load_single_file_as_dataframe(input_csv_path)
@@ -64,9 +72,9 @@ if __name__ == '__main__':
 
     [user_train, user_valid, user_test, usernum, itemnum] = dataset
 
-    best_model_path = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/SASRec.epoch=24.lr=0.0001.layer=2.head=1.hidden=50.maxlen=10000.pth'
+    #best_model_path = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/SASRec.epoch=24.lr=0.0001.layer=2.head=1.hidden=50.maxlen=10000.pth'
 
-    embedding_output_file = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/item_embeddings_24epoch.npy'
+    #embedding_output_file = r'/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/item_embeddings_24epoch.npy'
 
     print(f"\n--- 开始提取物品嵌入 ---")
     print(f"从模型检查点加载: {best_model_path}")
@@ -79,7 +87,11 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load(best_model_path, map_location=torch.device(args.device)))
     model.eval()  # 设置为评估模式
 
-    extract_and_save_item_embeddings(
+    #extract_and_save_item_embeddings(
+    #    model=model,
+    #    output_path=embedding_output_file
+    #)
+    extract_and_save_item_embeddings_batch(
         model=model,
         output_path=embedding_output_file
     )
