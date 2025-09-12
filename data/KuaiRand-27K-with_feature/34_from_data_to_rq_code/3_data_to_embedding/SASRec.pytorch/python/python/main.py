@@ -33,7 +33,7 @@ parser.add_argument('--state_dict_path', default=None, type=str)
 parser.add_argument('--norm_first', action='store_true', default=False)
 parser.add_argument('--patience', default=5, type=int, help='Number of epochs to wait for improvement before early stopping.')
 parser.add_argument('--feature_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/item_feat_norm.pkl', type=str, help='Path to the item features .pkl file.')
-parser.add_argument('--input_csv_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_train.csv', type=str, help='Path to the train csv file.')
+parser.add_argument('--input_csv_path', default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/1_1_KuaiRand-27K.csv', type=str, help='Path to the train csv file.')
 parser.add_argument('--feature_emb_dim', default=5, type=int,help='The dim for context feature.')
 
 args = parser.parse_args()

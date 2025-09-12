@@ -41,17 +41,24 @@ def convert_sequences(args):
     missing_ids = set() # 用于记录所有未在映射文件中找到的ID
 
     # 使用tqdm来显示进度条，对处理大数据非常有用
+    count = 0
     for index, row in tqdm(df.iterrows(), total=df.shape[0], desc="Processing Sequences"):
         sequence_str = row.get('sequence_item_ids')
+        ground_truth_str = row.get('ground_truth_item_ids')
+        user_id = row.get('user_id')
 
         # 跳过空的或格式不正确的序列
         if not isinstance(sequence_str, str) or not sequence_str:
             continue
+        if not isinstance(ground_truth_str, str) or not ground_truth_str:
+            count += 1
+            continue
         
         # 将逗号分隔的ID字符串分割成列表
         original_ids = sequence_str.split(',')
-        
+        ground_truth_ids = ground_truth_str.split(',')
         full_sequence_codes = []
+        ground_truth_codes = []
 
         # 假设固定的 rq_codes
         #fixed_rq_codes = ["<a_256>", "<b_256>", "<c_256>"]  # 根据需要替换为你的固定值
@@ -61,7 +68,6 @@ def convert_sequences(args):
         for item_id in original_ids:
             # item_id 在CSV中是字符串，正好可以作为JSON加载的字典的键
             rq_codes = rq_code_map.get(item_id)
-
             if rq_codes:
                 # 如果找到了对应的编码，就将其加入最终序列
                 full_sequence_codes.extend(rq_codes)
@@ -78,15 +84,27 @@ def convert_sequences(args):
                     missing_ids.add(item_id)
                     # 使用固定的 rq_codes 填充
                     full_sequence_codes.extend(fixed_rq_codes)
+                    
+        '''
+        这一段是将ground_truth转化成rq_code的，暂时改为下面的直接用id的部分
+        for item_id in ground_truth_ids:
+            ground_truth_rq_codes = rq_code_map.get(item_id)
+            if ground_truth_rq_codes:
+                ground_truth_codes.extend(ground_truth_rq_codes)
+            else:
+                ground_truth_codes.extend(fixed_rq_codes)'''
+        for item_id in ground_truth_ids:
+            ground_truth_codes.extend(item_id)
         
         # 如果这个序列经过转换后不为空，则进行格式化
         if full_sequence_codes:
             # 将所有RQ编码用空格连接成一个长字符串
             final_text = " ".join(full_sequence_codes)
+            final_ground_truth = " ".join(ground_truth_codes)
             
             # 按照要求的格式创建字典
-            output_item = {"text": final_text}
-            
+            output_item = {"text": final_text, "ground_truth": final_ground_truth, "user_id": user_id}
+
             # 加入最终的输出列表
             final_output_list.append(output_item)
 
@@ -97,8 +115,9 @@ def convert_sequences(args):
     # --- 第4步: 将最终结果保存为JSON文件 ---
     print(f"\n转换完成，共生成 {len(final_output_list)} 条编码序列。")
     print(f"正在将结果保存到: {args.output_path}")
-    print('one sample first 30 tokens: ', final_output_list[0]['text'].split()[:30])
-    print('one sample last 30 tokens: ', final_output_list[0]['text'].split()[-30:])   
+    print('one sample of history first 30 tokens: ', final_output_list[0]['text'].split()[:30])
+    print('one sample of history last 30 tokens: ', final_output_list[0]['text'].split()[-30:])   
+    print('one sample of ground truth: ', final_output_list[0]['ground_truth'].split())
 
     try:
         with open(args.output_path, 'w', encoding='utf-8') as f:
@@ -107,6 +126,7 @@ def convert_sequences(args):
         print("--- 所有任务已成功完成！ ---")
     except IOError as e:
         print(f"错误：无法写入输出文件。请检查路径和权限: {e}")
+    print(f"共有 {count} 条序列因没有ground_truth被跳过。")
 
 
 if __name__ == '__main__':
@@ -123,10 +143,12 @@ if __name__ == '__main__':
     # Base directory: output_{dataset}
     base_dir = f"output_{args.dataset}"
 
-    train_sequence_path = os.path.join(base_dir, "1_1_train.csv")
-    test_sequence_path = os.path.join(base_dir, "1_1_test.csv")
-    train_output_path = os.path.join(base_dir, "5_train_rq_codes_pt_data.json")
-    test_output_path = os.path.join(base_dir, "5_test_rq_codes_pt_data.json")
+    # train_sequence_path = os.path.join(base_dir, "1_1_train.csv")
+    # test_sequence_path = os.path.join(base_dir, "1_1_test.csv")
+    # train_output_path = os.path.join(base_dir, "5_train_rq_codes_pt_data.json")
+    # test_output_path = os.path.join(base_dir, "5_test_rq_codes_pt_data.json")
+    all_sequence_path = os.path.join(base_dir, "1_1_KuaiRand-27K.csv")
+    all_output_path = os.path.join(base_dir, "5_KuaiRand-27K_pt_data.json")
 
 
     input_json = os.path.join(base_dir, "original_item_id_to_rq_code.json")
@@ -145,7 +167,7 @@ if __name__ == '__main__':
 
         print(f"Shifted rq_code_map saved to {output_json}")
 
-    # --- Run for train ---
+    '''# --- Run for train ---
     train_args = argparse.Namespace(
         rq_map_path=output_json,
         sequence_data_path=train_sequence_path,
@@ -161,7 +183,15 @@ if __name__ == '__main__':
         output_path=test_output_path,
         codelen=args.codelen        
     )
-    convert_sequences(test_args)
+    convert_sequences(test_args)'''
+        # --- Run for all ---
+    all_args = argparse.Namespace(
+        rq_map_path=output_json,
+        sequence_data_path=all_sequence_path,
+        output_path=all_output_path,
+        codelen=args.codelen        
+    )
+    convert_sequences(all_args)
 
     '''
     parser = argparse.ArgumentParser(description="Convert item ID sequences to RQ code sequences.")

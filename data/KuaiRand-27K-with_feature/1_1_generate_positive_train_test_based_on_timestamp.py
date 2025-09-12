@@ -102,14 +102,14 @@ def analyze_chunk(df_chunk: pd.DataFrame, cutoff_timestamp: int) -> Tuple[List[D
             
     return chunk_results, local_max_after_len
 
-def process_and_split_data_parallel(input_files: List[str], train_output_path: str, test_output_path: str, cutoff_timestamp: int, num_processes: int = None):
+def process_and_split_data_parallel(input_files: List[str], train_output_path: str, all_output_path: str, cutoff_timestamp: int, num_processes: int = None):
     """
     通过多核并行处理多个CSV文件，筛选并按时间戳分割用户序列，最终生成统一的训练集和测试集文件。
 
     Args:
         input_files (List[str]): 输入的CSV文件路径列表。
         train_output_path (str): 训练集输出路径。
-        test_output_path (str): 测试集输出路径。
+        all_output_path (str): 完整数据集输出路径。
         cutoff_timestamp (int): 分割时间戳。
         num_processes (int, optional): 使用的进程数。默认为机器的CPU核心数。
     """
@@ -164,47 +164,50 @@ def process_and_split_data_parallel(input_files: List[str], train_output_path: s
     for user_record in all_processed_users:
         user_id = user_record['user_id']
         before_items = user_record['before_items']
-        # 对 'before' 和 'after' 中的 ID 进行 +1 操作
-        incremented_before_items = [str(int(item) + 1) for item in before_items]
         after_items = user_record['after_items']
 
-        # 生成训练数据：只要 'before' 序列不为空，就加入训练集
-        if before_items:
-            train_data.append({
-                'user_id': user_id,
-                'sequence_item_ids': ",".join(incremented_before_items)
-            })
+        # # 生成训练数据：只要 'before' 序列不为空，就加入训练集
+        # if before_items:
+        #     train_data.append({
+        #         'user_id': user_id,
+        #         'sequence_item_ids': ",".join(before_items)
+        #     })
 
         # 生成测试数据：'before' 序列作为输入，'after' 序列作为目标（需要填充）
         # 通常，测试集中也要求用户有历史行为
         if before_items:
             # 对 'after' 序列进行填充
-            padding_needed = global_max_after_len - len(after_items)
-            padded_after_items = after_items + ['0'] * padding_needed
+            # padding_needed = global_max_after_len - len(after_items)
+            # padded_after_items = after_items + ['0'] * padding_needed
+
+            # 对 'before' 和 'after' 中的 ID 进行 +1 操作
+            incremented_before_items = [str(int(item) + 1) for item in before_items]
+            incremented_after_items = [str(int(item) + 1) for item in after_items]
             
-            # 测试集的序列是 'before' 和 填充后 'after' 的拼接
-            test_sequence = incremented_before_items + padded_after_items
+            # # 测试集的序列是 'before' 和 填充后 'after' 的拼接
+            # test_sequence = incremented_before_items + padded_after_items
             
             test_data.append({
                 'user_id': user_id,
-                'sequence_item_ids': ",".join(test_sequence)
+                'sequence_item_ids': ",".join(incremented_before_items),
+                'ground_truth_item_ids': ",".join(incremented_after_items)
             })
 
     # --- 步骤 5: 保存到 CSV 文件 ---
     print("步骤 5: 保存文件...")
-    if train_data:
-        train_df = pd.DataFrame(train_data)
-        train_df.to_csv(train_output_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
-        print(f"训练集已成功保存到 '{train_output_path}'，共 {len(train_df)} 条记录。")
-    else:
-        print("没有生成任何训练数据。")
+    # if train_data:
+    #     train_df = pd.DataFrame(train_data)
+    #     train_df.to_csv(train_output_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
+    #     print(f"训练集已成功保存到 '{train_output_path}'，共 {len(train_df)} 条记录。")
+    # else:
+    print("不单独生成任何训练数据。")
 
     if test_data:
         test_df = pd.DataFrame(test_data)
-        test_df.to_csv(test_output_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
-        print(f"测试集已成功保存到 '{test_output_path}'，共 {len(test_df)} 条记录。")
+        test_df.to_csv(all_output_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        print(f"完整数据集已成功保存到 '{all_output_path}'，共 {len(test_df)} 条记录。")
     else:
-        print("没有生成任何测试数据。")
+        print("没有生成任何数据。")
 
 
 # --- 使用示例 ---
@@ -237,7 +240,7 @@ if __name__ == '__main__':
 
     # 定义输出文件
     train_output_file = os.path.join(output_dir, "1_1_train.csv")
-    test_output_file = os.path.join(output_dir, "1_1_test.csv")
+    all_output_file = os.path.join(output_dir, "1_1_KuaiRand-27K.csv")
 
     
     # 定义分割时间戳
@@ -248,7 +251,7 @@ if __name__ == '__main__':
     process_and_split_data_parallel(
         input_files=input_file_list,
         train_output_path=train_output_file,
-        test_output_path=test_output_file,
+        all_output_path=all_output_file,
         cutoff_timestamp=CUTOFF_TIMESTAMP,
-        num_processes=4
+        num_processes=8
     )
