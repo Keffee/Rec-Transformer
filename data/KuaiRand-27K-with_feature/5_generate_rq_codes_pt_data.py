@@ -68,7 +68,7 @@ def convert_sequences(args):
         for item_id in original_ids:
             # item_id 在CSV中是字符串，正好可以作为JSON加载的字典的键
             rq_codes = rq_code_map.get(item_id)
-            if rq_codes:
+            if rq_codes: # rq_codes is a list, e.g.,['<a_7416>', '<b_2022>', '<c_4900>']
                 # 如果找到了对应的编码，就将其加入最终序列
                 full_sequence_codes.extend(rq_codes)
             else:
@@ -93,14 +93,15 @@ def convert_sequences(args):
                 ground_truth_codes.extend(ground_truth_rq_codes)
             else:
                 ground_truth_codes.extend(fixed_rq_codes)'''
-        for item_id in ground_truth_ids:
-            ground_truth_codes.extend(item_id)
+        #for item_id in ground_truth_ids: # item_id is a str, e.g.,'1327729'
+        #    ground_truth_codes.extend(item_id)
         
         # 如果这个序列经过转换后不为空，则进行格式化
         if full_sequence_codes:
             # 将所有RQ编码用空格连接成一个长字符串
             final_text = " ".join(full_sequence_codes)
-            final_ground_truth = " ".join(ground_truth_codes)
+            #final_ground_truth = " ".join(ground_truth_codes)
+            final_ground_truth = " ".join(ground_truth_ids)
             
             # 按照要求的格式创建字典
             output_item = {"text": final_text, "ground_truth": final_ground_truth, "user_id": user_id}
