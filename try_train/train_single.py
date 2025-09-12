@@ -232,7 +232,7 @@ def main():
     train_dataset = load_dataset("json", data_files=dataset_path, split="train")
     test_dataset = load_dataset("json", data_files=dataset_path, split="test")
     # eval_dataset = split_dataset["test"]
-    # print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
+    print(f"Train dataset size: {len(train_dataset)}, test dataset size: {len(test_dataset)}")
 
     # <<< MODIFIED: LlamaRecConfig 现在从字典动态构建 >>>
     print("Creating LlamaRecForCausalLM model from scratch...")
@@ -254,6 +254,17 @@ def main():
     )
     model = LlamaRecForCausalLM(config)
     print(f"Model created with {model.num_parameters() / 1e6:.2f} M parameters.")
+
+    # 1. Count all parameters
+    #total_params = sum(p.numel() for p in model.parameters()) / 1e6
+    #print(f"Total number of parameters: {total_params:.2f}M")
+
+    # 2. Count parameters excluding embeddings
+    total_params_excl_emb = sum(
+        p.numel() for name, p in model.named_parameters() if "emb" not in name
+    ) / 1e6
+    print(f"Number of parameters (excl. emb): {total_params_excl_emb:.2f}M")
+
 
     # <<< MODIFIED: TrainingArguments 现在从字典动态构建 >>>
     # 将 YAML 中未包含的、依赖于路径的参数添加到字典中
