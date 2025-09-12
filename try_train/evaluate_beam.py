@@ -9,6 +9,10 @@ from typing import Dict, List, Optional,Iterable
 import warnings
 import json
 from utils_metric import eval_from_beams
+from collections import defaultdict
+import torch
+from torch.nn.utils.rnn import pad_sequence
+import time
 # --- 1. 复用你在 train.py 中定义好的核心组件 ---
 #    (为了让脚本独立可运行，我们直接将它们复制过来)
 
@@ -19,6 +23,17 @@ from transformers import EvalPrediction
 
 # 忽略不必要的警告
 warnings.filterwarnings("ignore", category=UserWarning)
+
+import torch.distributed as dist
+
+def setup_distributed():
+    dist.init_process_group(backend="nccl")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    return torch.device("cuda", local_rank)
+
+device = setup_distributed()
+print(f"[Rank {dist.get_rank()}] Using device: {device}")
 
 # --- [复用] 预处理函数 ---
 def final_preprocess_function(examples: Dict[str, List[str]]) -> Dict[str, List[List[int]]]:
@@ -41,17 +56,46 @@ class EvalDataCollator:
         #eval_labels_as_int = [e["sequence"][-1] for e in examples]
 
         all_inputs = [e["text"].split(" ") for e in examples]
+        all_labels = [e["ground_truth"].split(" ") for e in examples]
+        
+        batch = self.tokenizer(
+            all_inputs,
+            is_split_into_words=True,
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt"
+        )
+        return batch, all_labels
+
+'''
+class EvalDataCollator: 
+    def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __call__(self, examples: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
+        # 1. 分离输入和标签 (原始 item ID)
+        #input_sequences_as_int = [e["sequence"][:-1] for e in examples]
+        #eval_labels_as_int = [e["sequence"][-1] for e in examples]
+
+        all_inputs = [e["text"].split(" ") for e in examples]
         all_labels = all_inputs
         
         all_inputs, all_labels = [], []
         self.sid_len = 3 # the number of semantic token ids for one item id
-        self.tgt_pad_len = 6223*self.sid_len
+        self.tgt_pad_len = 5893*self.sid_len
         # padded_sid_seq = ['<a_194>', '<b_63>', '<c_39>']
-        for e in examples:
+        for idx, e in enumerate(examples):
             tokens = e["text"].split(" ") # ['<a_13>', '<b_76>', '<c_117>', '<a_95>', '<b_66>', '<c_182>', '<a_194>', '<b_63>', '<c_39>'...]
             hist_tokens = tokens[:-self.tgt_pad_len]
             tgt_tokens = tokens[-self.tgt_pad_len:] 
             
+            if idx==0:
+                print('hist_tokens firt 10: ', hist_tokens[:10])
+                print('hist_tokens - 10: ', hist_tokens[-10:])
+
+                print('tgt_tokens :10: ', tgt_tokens[:10] )
             all_inputs.append(hist_tokens)
             all_labels.append(tgt_tokens) 
         # 2. 将输入序列的原始 ID 转换为字符串
@@ -80,7 +124,7 @@ class EvalDataCollator:
             batch["labels"][batch["labels"] == self.tokenizer.pad_token_id] = -100
         
         return batch
-        
+'''       
 
 # --- [复用] 流式指标计算器 ---
 class StreamingMetricsCalculator:
@@ -132,9 +176,15 @@ def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> 
     """
     B, nbeam, T = outputs.shape
     #assert T == 3
+    print(outputs.shape)
+    print('outputs: ', outputs)
+    #flat_ids = outputs.detach().cpu().view(-1).tolist()
+    flat_ids = outputs.detach().cpu().reshape(-1).tolist()
+    print('flat_ids : ', flat_ids )
 
-    flat_ids = outputs.detach().cpu().view(-1).tolist()
     flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*nbeam*3
+    print('flat_toks : ', flat_toks )
+    
     triplets = [tuple(flat_toks[i:i+T]) for i in range(0, len(flat_toks), T)]
 
     out = torch.full((B, nbeam), -1, dtype=torch.long)
@@ -142,6 +192,7 @@ def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> 
     for b in range(B):
         for j in range(nbeam):
             trip = triplets[idx]; idx += 1
+            print('output trip: ', trip)
             out[b, j] = tokens2iid.get(trip, -1)  # -1 if not found
     return out
 
@@ -153,10 +204,10 @@ def map_triplets_labels(labels: torch.Tensor, tokenizer, tokens2iid: dict, ignor
     """
     B, L, T = labels.shape
     #assert T == 3
-
+    #flat_ids = labels.detach().cpu().view(-1).tolist()
     flat_ids = labels.detach().cpu().view(-1).tolist()
-    flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*L*3
-    triplets = [tuple(flat_toks[i:i+T]) for i in range(0, len(flat_toks), T)]
+    #flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*L*3
+    triplets = [tuple(flat_ids[i:i+T]) for i in range(0, len(flat_ids), T)]
 
     out = torch.full((B, L), -1, dtype=torch.long)
     idx = 0
@@ -166,7 +217,9 @@ def map_triplets_labels(labels: torch.Tensor, tokenizer, tokens2iid: dict, ignor
             # if this label row contains ignore_index anywhere → drop
             if (labels[b, j] == ignore_index).any():
                 continue
-            out[b, j] = tokens2iid.get(trip, -1)
+            # id to tokens 
+            toks = tuple(tokenizer.convert_ids_to_tokens(trip))
+            out[b, j] = tokens2iid.get(toks, -1)
     return out
 
 # --- 2. 评估主函数 ---
@@ -242,15 +295,15 @@ def evaluate_checkpoint():
     #     test_size=dataset_split_config['test_size'], 
     #     seed=dataset_split_config['seed']
     # )
-    train_dataset = load_dataset("json", data_files=dataset_path, split="train")
+    #train_dataset = load_dataset("json", data_files=dataset_path, split="train")
     test_dataset = load_dataset("json", data_files=dataset_path, split="test")
     # eval_dataset = split_dataset["test"]
     # print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
 
 
     # --- 设备配置 ---
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #print(f"Using device: {device}")
 
     # --- 加载模型和 Tokenizer ---
     print("\n--- Loading Model & Tokenizer ---")
@@ -259,7 +312,10 @@ def evaluate_checkpoint():
     model.to(device)
     model.eval() # **非常重要**：切换到评估模式
     print(f"Model loaded with {model.num_parameters() / 1e6:.2f} M parameters.")
-
+    print(tokenizer)
+    #tokenizer.truncation_side = "left"
+    print(tokenizer)
+    print()
     eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=model_params['max_seq_length'])
     eval_dataloader = DataLoader(
         test_dataset,
@@ -270,51 +326,101 @@ def evaluate_checkpoint():
     )    
 
     # --- 初始化指标计算器 ---
-    metrics_calculator = StreamingMetricsCalculator()
-    
+    #metrics_calculator = StreamingMetricsCalculator()
+    metrics_sum = defaultdict(lambda: defaultdict(float))
+    num_batches = 0
+    all_results = []  
+
     # --- 手动评估循环 ---
     print("\n--- Starting Evaluation Loop ---")
-    with torch.no_grad(): # **非常重要**：禁用梯度计算，节省显存和计算资源
-        for batch in tqdm(eval_dataloader, desc="Evaluating"):
-            # 1. 将数据移动到设备
-            batch = {k: v.to(device) for k, v in batch.items()}
-            batch.pop("token_type_ids", None)
-            # 2. 获取模型输出
-            len_sid = 3
-            num_beam = 20
-            num_return_sequences=20
-            outputs_beam = model.generate(
-                **batch,
-                max_length=len_sid + int(model_params['max_seq_length']),
-                num_beams=num_beam,
-                num_return_sequences=num_return_sequences,   # return all beams
-                early_stopping=True
-            )
-            # 3. 准备评测函数需要的输入
-            generate_only = outputs_beam[:,-len_sid:]
-            outputs = generate_only.view(cli_args.eval_batch_size, num_return_sequences, len_sid) # [B,nbeam,3]
-            #logits = outputs.logits
-            labels = batch['labels']
-            labels = labels.view(cli_args.eval_batch_size,  int(labels.size(1)/3), len_sid) # [B,seq,3]
-
-            out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
-            lab_ids = map_triplets_labels(labels, tokenizer, tokens2iid=tokens2iid, ignore_index=-100)
-            eval_pred = eval_from_beams(out_ids, lab_ids[:,-2:], ignore_index=-1, ks=(50,100))            
-            
-            #eval_pred = EvalPrediction(predictions=logits, label_ids=labels)
-            
-            # 4. 累积指标
-            metrics_calculator.accumulate(eval_pred)
-
-    # --- 计算并打印最终结果 ---
-    final_metrics = metrics_calculator.compute()
     
-    print("\n--- Evaluation Results ---")
-    # 使用漂亮的格式打印结果
-    for metric, value in final_metrics.items():
-        print(f"{metric:<10}: {value}")
-    print("--------------------------")
+    with open("eval_results.jsonl", "w", encoding="utf-8") as f:
+        with torch.no_grad(): # **非常重要**：禁用梯度计算，节省显存和计算资源
+            for batch, labels in tqdm(eval_dataloader, desc="Evaluating"):
+                # 1. 将数据移动到设备
+                batch = {k: v.to(device) for k, v in batch.items()}
+                #batch = {k: v for k, v in batch.items()}
+                print(batch)
+                batch.pop("token_type_ids", None)
 
+                # 2. 获取模型输出
+                len_sid = 3
+                num_beam = 5
+                num_return_sequences=5
+                start_time = time.time() 
+                '''
+                outputs_beam = model.generate(
+                    **batch,
+                    max_length=len_sid + int(model_params['max_seq_length']),
+                    num_beams=num_beam,
+                    num_return_sequences=num_return_sequences,   # return all beams
+                    early_stopping=True
+                )
+                '''
+                outputs_beam = model.generate(
+                    **batch,
+                    max_length=len_sid + int(model_params['max_seq_length']),
+                    do_sample=True,          # 开启采样
+                    top_k=50,                # 或者 top_p=0.9
+                    top_p=0.9,
+                    num_return_sequences=num_return_sequences,   # return all beams
+                    early_stopping=True
+                )
+
+
+                end_time = time.time() 
+
+                elapsed_minutes = (end_time - start_time) / 60
+                print(f"beam Time spent: {elapsed_minutes:.2f} minutes")
+
+                # 3. 准备评测函数需要的输入
+                generate_only = outputs_beam[:,-len_sid:]
+                outputs = generate_only.view(cli_args.eval_batch_size, num_return_sequences, len_sid) # [B,nbeam,3]
+                #logits = outputs.logits
+                #labels = batch['labels']
+                #labels = labels.view(cli_args.eval_batch_size,  int(labels.size(1)/3), len_sid) # [B,seq,3]
+                #print('lab_ids',labels)
+                lab_ids = labels
+                out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
+                #lab_ids = map_triplets_labels(labels, tokenizer, tokens2iid=tokens2iid, ignore_index=-100)
+                print('out_ids',out_ids)
+                # convert to list of tensors (int)
+                lab_ids_int = [torch.tensor([int(x) for x in row], dtype=torch.long) for row in lab_ids]
+
+                # pad them to the same length
+                lab_tensor = pad_sequence(lab_ids_int, batch_first=True, padding_value=-100)
+                #eval_pred = eval_from_beams(out_ids, lab_ids[:,-2:], ignore_index=-1, ks=(50,100))            
+                print(lab_tensor.size())
+                eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=(50,100))            
+                
+                
+                print(eval_pred)
+                #print('labels',labels)
+                #{'HR': {50: 0.0, 100: 0.0}, 'Recall': {50: 0.0, 100: 0.0}, 'Precision': {50: 0.0, 100: 0.0}, 'NDCG': {50: 0.0, 100: 0.0}, 'MRR': {50: 0.0, 100: 0.0}, 'MAP': {50: 0.0, 100: 0.0}}
+                break
+                #eval_pred = EvalPrediction(predictions=logits, label_ids=labels)
+                
+                # 4. 累积指标
+                #metrics_calculator.accumulate(eval_pred)
+
+                for metric_name, ks_dict in eval_pred.items():
+                    for k, value in ks_dict.items():
+                        metrics_sum[metric_name][k] += value
+                num_batches += 1
+
+                for i in range(len(out_ids)):
+                    result = {
+                        "input": tokenizer.decode(batch["input_ids"][i].tolist(), skip_special_tokens=True),
+                        "output": out_ids[i].tolist() if torch.is_tensor(out_ids[i]) else out_ids[i],
+                        "groundtruth": lab_ids[i].tolist()
+                    }
+                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        metrics_avg = {}
+        for metric_name, ks_dict in metrics_sum.items():
+            metrics_avg[metric_name] = {k: v / num_batches for k, v in ks_dict.items()}
+
+        print("Average metrics:", metrics_avg)
 
 if __name__ == "__main__":
     evaluate_checkpoint()
