@@ -210,6 +210,9 @@ def main():
         print("Found existing tokenizer. Loading it...")
         tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
 
+    tokenizer.truncation_side = "left"
+    tokenizer.padding_side = "left"
+
     # (健壮性检查逻辑不变)
     if tokenizer.pad_token_id is None: tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("[PAD]")
     if tokenizer.bos_token_id is None: tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("[BOS]")
