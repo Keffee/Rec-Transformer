@@ -1,0 +1,29 @@
+paths:
+  train_dataset_path: "../data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/5_KuaiRand-27K_pt_data.json"
+  test_dataset_path: "../data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/5_KuaiRand-27K_pt_data.json"
+  output_dir: "./llama-rec_KuaiRand-27K-0501-checkpoints/large"
+  tokenizer_dir: "./rq_code_tokenizer_KuaiRand-27K-0501"
+
+model_params:
+  max_seq_length: 2000
+  hidden_size: 1024
+  intermediate_size: 4096
+  num_hidden_layers: 24
+  num_attention_heads: 16
+  rms_norm_eps: 1.0e-6
+
+training_args:
+  per_device_train_batch_size: 32
+  per_device_eval_batch_size: 512
+  gradient_accumulation_steps: 1
+  learning_rate: 1.0e-4
+  num_train_epochs: 200
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.0
+  save_strategy: "epoch"
+  logging_steps: 100
+  save_total_limit: 5
+  fp16: true
+  report_to: "tensorboard"
+  remove_unused_columns: false
+  batch_eval_metrics: false
