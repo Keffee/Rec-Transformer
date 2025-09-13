@@ -26,14 +26,25 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import torch.distributed as dist
 
-def setup_distributed():
-    dist.init_process_group(backend="nccl")
-    local_rank = int(os.environ["LOCAL_RANK"])
-    torch.cuda.set_device(local_rank)
-    return torch.device("cuda", local_rank)
+def setup_device():
+    if dist.is_available() and dist.is_nccl_available() and "RANK" in os.environ:
+        # Multi-GPU distributed mode (torchrun/torch.distributed.launch)
+        dist.init_process_group(backend="nccl")
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        device = torch.device("cuda", local_rank)
+        print(f"[Rank {dist.get_rank()}] Using device: {device}")
+    elif torch.cuda.is_available():
+        # Single-GPU
+        device = torch.device("cuda", 0)
+        print(f"[Single GPU] Using device: {device}")
+    else:
+        # CPU fallback
+        device = torch.device("cpu")
+        print("[CPU] Using device: cpu")
+    return device
 
-device = setup_distributed()
-print(f"[Rank {dist.get_rank()}] Using device: {device}")
+device = setup_device()
 
 # --- [复用] 预处理函数 ---
 def final_preprocess_function(examples: Dict[str, List[str]]) -> Dict[str, List[List[int]]]:
@@ -175,16 +186,8 @@ def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> 
     No ignore_index applied here.
     """
     B, nbeam, T = outputs.shape
-    #assert T == 3
-    print(outputs.shape)
-    print('outputs: ', outputs)
-    #flat_ids = outputs.detach().cpu().view(-1).tolist()
     flat_ids = outputs.detach().cpu().reshape(-1).tolist()
-    print('flat_ids : ', flat_ids )
-
     flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*nbeam*3
-    print('flat_toks : ', flat_toks )
-    
     triplets = [tuple(flat_toks[i:i+T]) for i in range(0, len(flat_toks), T)]
 
     out = torch.full((B, nbeam), -1, dtype=torch.long)
@@ -192,7 +195,6 @@ def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> 
     for b in range(B):
         for j in range(nbeam):
             trip = triplets[idx]; idx += 1
-            print('output trip: ', trip)
             out[b, j] = tokens2iid.get(trip, -1)  # -1 if not found
     return out
 
@@ -203,10 +205,7 @@ def map_triplets_labels(labels: torch.Tensor, tokenizer, tokens2iid: dict, ignor
     Any triplet containing ignore_index is skipped -> -1.
     """
     B, L, T = labels.shape
-    #assert T == 3
-    #flat_ids = labels.detach().cpu().view(-1).tolist()
     flat_ids = labels.detach().cpu().view(-1).tolist()
-    #flat_toks = tokenizer.convert_ids_to_tokens(flat_ids)  # list[str], length = B*L*3
     triplets = [tuple(flat_ids[i:i+T]) for i in range(0, len(flat_ids), T)]
 
     out = torch.full((B, L), -1, dtype=torch.long)
@@ -232,9 +231,37 @@ def evaluate_checkpoint():
                         help="Path to the JSON file mapping original item IDs to RQ codes (e.g., '4_item_id_to_rq_code.json').")
                         
     parser.add_argument("--config", type=str, required=True, help="Name of the config file to use. For example: pantry")
-    cli_args = parser.parse_args()
 
-    with open(cli_args.rq_map_path, "r") as f:
+    parser.add_argument("--lensid", type=int, default=3, help="the length of semantic tokens")
+    parser.add_argument("--decode-strategy", type=str, choices=["beam", "topk-topp"], default="beam", help="Decoding strategy: 'beam' for beam search or 'topk-topp' for nucleus/top-k sampling")
+    parser.add_argument("--num-beams", type=int, default=5, help="Number of beams for beam search. Also used as top-k cutoff if --decode-strategy=topk-topp")
+    parser.add_argument("--num-return-sequences", type=int, default=1, help="Number of sequences to return for each input")
+    parser.add_argument("--top-p", type=float, default=0.9, help="Top-p (nucleus) sampling probability, used if --decode-strategy=topk-topp")
+    parser.add_argument("--top-k", type=int, default=50, help="Top-k sampling cutoff, used if --decode-strategy=topk-topp")
+
+    parser.add_argument("--eval-ratio", type=float, default=1.0, help="Fraction of evaluation set to use (0 < ratio ≤ 1.0)")
+
+    parser.add_argument(
+        "--metrics", type=str, nargs="+",
+        default=["HR", "NDCG", "MRR", "MAP"],
+        help="List of metrics to compute, e.g. --metrics HR NDCG Recall"
+    )
+    # ["HR", "Recall", "Precision", "NDCG", "MRR", "MAP"],
+    parser.add_argument("--ks", type=int, nargs="+", default=[20, 50, 100],
+        help="List of cutoff values for evaluation metrics, e.g. --ks 20 50 100")
+
+    args = parser.parse_args()
+
+    if args.decode_strategy == "beam":
+        assert args.num_return_sequences <= args.num_beams, \
+            f"num_return_sequences ({args.num_return_sequences}) must be <= num_beams ({args.num_beams}) when using beam search."
+        run_name = f"{args.config}_beam{args.num_beams}_ret{args.num_return_sequences}"
+    elif args.decode_strategy == "topk-topp":
+        run_name = (
+            f"{args.config}_topk{args.top_k}_topp{args.top_p}_ret{args.num_return_sequences}"
+        )
+
+    with open(args.rq_map_path, "r") as f:
         iid2tokens = json.load(f)
 
     tokens2iid = {
@@ -243,9 +270,9 @@ def evaluate_checkpoint():
     }
 
     # <<< 新增: 读取并解析 YAML 配置文件 >>>
-    print(f"Loading configuration from: {cli_args.config}")
+    print(f"Loading configuration from: {args.config}")
     current_dir_name = os.path.dirname(os.path.abspath("__file__"))
-    config_path = os.path.join(current_dir_name, "pretrain_config", cli_args.config+'.yaml')
+    config_path = os.path.join(current_dir_name, "pretrain_config", args.config+'.yaml')
     with open(config_path, 'r') as f:
         config_data = yaml.safe_load(f)
 
@@ -264,69 +291,25 @@ def evaluate_checkpoint():
     tokenizer_dir = paths_config['tokenizer_dir']
     max_seq_length = model_params['max_seq_length']
 
-    # <<< MODIFIED: Tokenizer 创建逻辑现在使用配置中的路径 >>>
-    tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
-    raw_dataset = load_dataset("json", data_files=dataset_path, split="test")
-    # (这部分创建 tokenizer 的逻辑不变，只是使用了来自 config 的变量)
-    if not os.path.exists(tokenizer_file):
-        print("Tokenizer not found. Creating a new one from the RQ code dataset...")
-        mock_args = MockTrainingArguments(output_dir=tokenizer_dir, max_length=max_seq_length)
-        tokenizer = create_rq_code_tokenizer(dataset=raw_dataset, training_args=mock_args)
-    else:
-        print("Found existing tokenizer. Loading it...")
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
-
-    # (健壮性检查逻辑不变)
-    if tokenizer.pad_token_id is None: tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("[PAD]")
-    if tokenizer.bos_token_id is None: tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("[BOS]")
-    if tokenizer.eos_token_id is None: tokenizer.eos_token_id = tokenizer.convert_tokens_to_ids("[EOS]")
-    assert tokenizer.pad_token_id is not None and tokenizer.bos_token_id is not None and tokenizer.eos_token_id is not None
-    print(f"Final check - pad_token_id: {tokenizer.pad_token_id}, bos_token_id: {tokenizer.bos_token_id}, eos_token_id: {tokenizer.eos_token_id}")
-
-    # # <<< MODIFIED: 数据集划分现在使用配置中的参数 >>>
-    # print("Preprocessing and splitting the dataset...")
-    # processed_dataset = raw_dataset.map(
-    #     final_preprocess_function,
-    #     batched=True,
-    #     remove_columns=raw_dataset.column_names,
-    #     num_proc=4,
-    # )
-    # split_dataset = processed_dataset.train_test_split(
-    #     test_size=dataset_split_config['test_size'], 
-    #     seed=dataset_split_config['seed']
-    # )
-    #train_dataset = load_dataset("json", data_files=dataset_path, split="train")
     test_dataset = load_dataset("json", data_files=dataset_path, split="test")
-    # eval_dataset = split_dataset["test"]
-    # print(f"Train dataset size: {len(train_dataset)}, Evaluation dataset size: {len(eval_dataset)}")
-
-
-    # --- 设备配置 ---
-    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #print(f"Using device: {device}")
-
     # --- 加载模型和 Tokenizer ---
     print("\n--- Loading Model & Tokenizer ---")
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(cli_args.checkpoint_path)
-    model = LlamaRecForCausalLM.from_pretrained(cli_args.checkpoint_path)
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(args.checkpoint_path)
+    model = LlamaRecForCausalLM.from_pretrained(args.checkpoint_path)
     model.to(device)
     model.eval() # **非常重要**：切换到评估模式
     print(f"Model loaded with {model.num_parameters() / 1e6:.2f} M parameters.")
-    print(tokenizer)
-    #tokenizer.truncation_side = "left"
-    print(tokenizer)
-    print()
     eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=model_params['max_seq_length'])
     eval_dataloader = DataLoader(
         test_dataset,
-        batch_size=cli_args.eval_batch_size,
+        batch_size=args.eval_batch_size,
         collate_fn=eval_collator,
         num_workers=4,
         pin_memory=True
     )    
 
-    # --- 初始化指标计算器 ---
-    #metrics_calculator = StreamingMetricsCalculator()
+    total_batches = len(eval_dataloader)
+    max_batches = int(total_batches * args.eval_ratio)
     metrics_sum = defaultdict(lambda: defaultdict(float))
     num_batches = 0
     all_results = []  
@@ -337,82 +320,58 @@ def evaluate_checkpoint():
     with open("eval_results.jsonl", "w", encoding="utf-8") as f:
         with torch.no_grad(): # **非常重要**：禁用梯度计算，节省显存和计算资源
             for batch, labels in tqdm(eval_dataloader, desc="Evaluating"):
-                # 1. 将数据移动到设备
                 batch = {k: v.to(device) for k, v in batch.items()}
-                #batch = {k: v for k, v in batch.items()}
-                print(batch)
                 batch.pop("token_type_ids", None)
 
-                # 2. 获取模型输出
-                len_sid = 3
-                num_beam = 5
-                num_return_sequences=5
                 start_time = time.time() 
-                '''
-                outputs_beam = model.generate(
-                    **batch,
-                    max_length=len_sid + int(model_params['max_seq_length']),
-                    num_beams=num_beam,
-                    num_return_sequences=num_return_sequences,   # return all beams
-                    early_stopping=True
-                )
-                '''
-                outputs_beam = model.generate(
-                    **batch,
-                    max_length=len_sid + int(model_params['max_seq_length']),
-                    do_sample=True,          # 开启采样
-                    top_k=50,                # 或者 top_p=0.9
-                    top_p=0.9,
-                    num_return_sequences=num_return_sequences,   # return all beams
-                    early_stopping=True
-                )
+                if args.decode_strategy == "beam":
+                    outputs_beam = model.generate(
+                        **batch,
+                        max_length=args.lensid + int(model_params['max_seq_length']),
+                        num_beams=args.num_beams,
+                        num_return_sequences=args.num_return_sequences,
+                        early_stopping=True
+                    )
 
-
+                elif args.decode_strategy == "topk-topp":
+                    outputs_beam = model.generate(
+                        **batch,
+                        max_length=args.lensid + int(model_params['max_seq_length']),
+                        do_sample=True,
+                        top_k=args.top_k,
+                        top_p=args.top_p,
+                        num_return_sequences=args.num_return_sequences,
+                        early_stopping=True
+                    )
                 end_time = time.time() 
 
                 elapsed_minutes = (end_time - start_time) / 60
                 print(f"beam Time spent: {elapsed_minutes:.2f} minutes")
 
-                # 3. 准备评测函数需要的输入
-                generate_only = outputs_beam[:,-len_sid:]
-                outputs = generate_only.view(cli_args.eval_batch_size, num_return_sequences, len_sid) # [B,nbeam,3]
-                #logits = outputs.logits
-                #labels = batch['labels']
-                #labels = labels.view(cli_args.eval_batch_size,  int(labels.size(1)/3), len_sid) # [B,seq,3]
-                #print('lab_ids',labels)
+                generate_only = outputs_beam[:,-args.lensid:]
+                outputs = generate_only.view(args.eval_batch_size, args.num_return_sequences, args.lensid) # [B,nbeam,3]
                 lab_ids = labels
                 out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
-                #lab_ids = map_triplets_labels(labels, tokenizer, tokens2iid=tokens2iid, ignore_index=-100)
-                print('out_ids',out_ids)
                 # convert to list of tensors (int)
                 lab_ids_int = [torch.tensor([int(x) for x in row], dtype=torch.long) for row in lab_ids]
-
                 # pad them to the same length
                 lab_tensor = pad_sequence(lab_ids_int, batch_first=True, padding_value=-100)
-                #eval_pred = eval_from_beams(out_ids, lab_ids[:,-2:], ignore_index=-1, ks=(50,100))            
-                print(lab_tensor.size())
-                eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=(50,100))            
+                eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=(20, 50,100), metrics=args.metrics)            
                 
-                
-                print(eval_pred)
-                #print('labels',labels)
-                #{'HR': {50: 0.0, 100: 0.0}, 'Recall': {50: 0.0, 100: 0.0}, 'Precision': {50: 0.0, 100: 0.0}, 'NDCG': {50: 0.0, 100: 0.0}, 'MRR': {50: 0.0, 100: 0.0}, 'MAP': {50: 0.0, 100: 0.0}}
-                break
-                #eval_pred = EvalPrediction(predictions=logits, label_ids=labels)
-                
-                # 4. 累积指标
-                #metrics_calculator.accumulate(eval_pred)
-
                 for metric_name, ks_dict in eval_pred.items():
                     for k, value in ks_dict.items():
                         metrics_sum[metric_name][k] += value
                 num_batches += 1
 
-                for i in range(len(out_ids)):
+                if num_batches>= max_batches:
+                    break
+
+                #for i in range(len(out_ids)):
+                for i in range(1):
                     result = {
                         "input": tokenizer.decode(batch["input_ids"][i].tolist(), skip_special_tokens=True),
                         "output": out_ids[i].tolist() if torch.is_tensor(out_ids[i]) else out_ids[i],
-                        "groundtruth": lab_ids[i].tolist()
+                        "groundtruth": lab_ids[i]
                     }
                     f.write(json.dumps(result, ensure_ascii=False) + "\n")
 
@@ -420,7 +379,18 @@ def evaluate_checkpoint():
         for metric_name, ks_dict in metrics_sum.items():
             metrics_avg[metric_name] = {k: v / num_batches for k, v in ks_dict.items()}
 
-        print("Average metrics:", metrics_avg)
+        formatted_metrics = {
+            metric_name: {k: f"{v:.4f}" for k, v in ks_dict.items()}
+            for metric_name, ks_dict in metrics_avg.items()
+        }
+
+        print("Average metrics:", formatted_metrics)
+
+        output_file = f"{run_name}_metrics.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(formatted_metrics, f, indent=2, ensure_ascii=False)
+
+        print(f"Saved metrics to {output_file}")
 
 if __name__ == "__main__":
     evaluate_checkpoint()
