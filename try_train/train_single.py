@@ -122,7 +122,7 @@ class StreamingMetricsCalculator:   # 这里也用了默认3的设定，看到3�
             ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
             
             self.all_ranks.append(ranks.cpu())
-        #print('compute_result: ', compute_result)
+        # print('compute_result: ', compute_result)
         if compute_result:
             #print('---------comp')
             if not self.all_ranks:
