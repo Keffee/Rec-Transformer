@@ -1,6 +1,3 @@
-# 含有feature处理的数据更新说明
-## 关于文件结构和剩下的部分
-剩下的部分完全对齐no feature部分（好吧其实是没改完，rq早停还没加上）
 
 # 0. Structure
 
@@ -38,12 +35,13 @@ python 1_1_generate_positive_train_test_based_on_timestamp.py --dataset KuaiRand
 python 1_1_generate_positive_train_test_based_on_timestamp.py --dataset KuaiRand-27K-0501
 ```
 
-You will get `1_1_train.csv`和`1_1_test.csv` in `f"output_{args.dataset}"`
+You will get `1_1_KuaiRand-27K.csv`in `f"output_{args.dataset}"`
 
 # 2. Run SASRec to get item embedding
 ```sh
 cd 34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/python
 
+# for 0501
 DATASET="KuaiRand-27K-0501"
 LEN=6000
 BS=6
@@ -66,12 +64,38 @@ CUDA_VISIBLE_DEVICES=1 nohup python ./python/main.py \
     --patience=$PATIENCE \
     --lr=$LR \
     > $LOG_FILE 2>&1 &
+
+# for full data
+
+DATASET="KuaiRand-27K"
+LEN=10000
+BS=10
+DIM_FEAT=64
+DIM_HIDDEN=128
+LR=0.001
+PATIENCE=3
+
+LOG_DIR="output_${DATASET}"
+mkdir -p $LOG_DIR
+
+LOG_FILE="${LOG_DIR}/train_len${LEN}_bs${BS}_feat${DIM_FEAT}_hidden${DIM_HIDDEN}_lr${LR}_pat${PATIENCE}.log"
+
+CUDA_VISIBLE_DEVICES=2 nohup python ./python/main.py \
+    --dataset=$DATASET \
+    --maxlen=$LEN \
+    --batch_size=$BS \
+    --feature_emb_dim=$DIM_FEAT \
+    --hidden_units=$DIM_HIDDEN \
+    --patience=$PATIENCE \
+    --lr=$LR \
+    > $LOG_FILE 2>&1 &
+
+
 ```
 
 You will get `best_item_embeddings.npy` in `f"output_{args.dataset}` 从第0行开始，第k行就是对应id=k的item.
 
-# 3. 关于4_embedding_to_rq_code
-还没找到一个很好的方法来避免code冲突。
+# .4_embedding_to_rq_code
 
 ```sh
 DATASET="KuaiRand-27K-0501"
