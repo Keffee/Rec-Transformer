@@ -258,7 +258,7 @@ def evaluate_checkpoint():
         run_name = f"{args.config}_beam{args.num_beams}_ret{args.num_return_sequences}"
     elif args.decode_strategy == "topk-topp":
         run_name = (
-            f"{args.config}_topk{args.top_k}_topp{args.top_p}_ret{args.num_return_sequences}"
+            f"{args.config}_topk{args.top_k}_topp{args.top_p}_ret{args.num_return_sequences}_evalratio{args.eval_ratio}"
         )
 
     with open(args.rq_map_path, "r") as f:
