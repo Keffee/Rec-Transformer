@@ -41,7 +41,8 @@ args = parser.parse_args()
 base_output_dir = "../../../../output_"+args.dataset
 
 args.feature_path = os.path.join(base_output_dir, "item_feat_norm.pkl")
-args.input_csv_path = os.path.join(base_output_dir, "1_1_train.csv")
+#args.input_csv_path = os.path.join(base_output_dir, "1_1_train.csv")
+args.input_csv_path = os.path.join(base_output_dir, "1_1_KuaiRand-27K.csv")
 
 # Define finetuned parameters and show them in output folder name. 
 # If already select the best parameter, just remove it.
@@ -148,24 +149,16 @@ if __name__ == '__main__':
     # this fails embedding init 'Embedding' object has no attribute 'dim'
     # model.apply(torch.nn.init.xavier_uniform_)
 
-    def count_dense_sparse_in_m(model):
-        total, dense, sparse = 0, 0, 0
-        for module in model.modules():
-            if isinstance(module, nn.Embedding):
-                for name, param in module.named_parameters(recurse=False):
-                    sparse += param.numel()
-            else:
-                for name, param in module.named_parameters(recurse=False):
-                    dense += param.numel()
-        total = dense + sparse
+    # 1. Count all parameters
+    total_params = sum(p.numel() for p in model.parameters()) / 1e6
+    print(f"Total number of parameters: {total_params:.2f}M")
 
-        print(f"Total params : {total/1e6:.3f} M")
-        print(f"Dense params : {dense/1e6:.3f} M")
-        print(f"Sparse params: {sparse/1e6:.3f} M")
+    # 2. Count parameters excluding embeddings
+    total_params_excl_emb = sum(
+        p.numel() for name, p in model.named_parameters() if "emb" not in name
+    ) / 1e6
+    print(f"Number of parameters (excl. emb): {total_params_excl_emb:.2f}M")
 
-        return total, dense, sparse
-
-    count_dense_sparse_in_m(model)
 
     model.train() # enable model training
     
