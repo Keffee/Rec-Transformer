@@ -36,3 +36,4 @@ data/KuaiRand-27K-with_feature/*.csv
 data/KuaiRand-27K-with_feature/output_*
 data/KuaiRand-27K-with_feature/5_KuaiRand-27K_pt_data.json
 rq_code_tokenizer_KuaiRand-27K-with-feature/
+try_train/__pycache__/
