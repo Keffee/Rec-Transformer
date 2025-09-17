@@ -359,7 +359,7 @@ def evaluate_checkpoint():
             lab_ids_int = [torch.tensor([int(x) for x in row], dtype=torch.long) for row in lab_ids]
             # pad them to the same length
             lab_tensor = pad_sequence(lab_ids_int, batch_first=True, padding_value=-100)
-            eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=(20, 50,100), metrics=args.metrics)            
+            eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=args.ks, metrics=args.metrics)            
             
             for metric_name, ks_dict in eval_pred.items():
                 for k, value in ks_dict.items():
