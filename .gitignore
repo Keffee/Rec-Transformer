@@ -30,7 +30,8 @@ try_train/*checkpoints*/
 data/KuaiRand-27K-with_feature/*.csv
 data/KuaiRand-27K-with_feature/output_KuaiRand-27K
 data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/
-data/KuaiRand-27K-with_feature/6_par*
+data/KuaiRand-27K-with_feature/6_parquet_for_verl/KuaiRand-27K
+data/KuaiRand-27K-with_feature/6_parquet_for_verl/KuaiRand-27K-0501
 try_train/__pycache__/
 try_train/logs/
 try_train/output*/
