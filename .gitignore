@@ -29,12 +29,7 @@ try_train/llama-rec-KuaiRand-27K-100krows-36users-checkpoint-20/
 try_train/*checkpoints*/
 data/KuaiRand-27K-with_feature/*.csv
 data/KuaiRand-27K-with_feature/output_KuaiRand-27K
-data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/*.npy
-data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/*.pkl
-data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/*.csv
-data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/*pt_data.json
-data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/4_*.json
-data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/7_KuaiRand-27K-tokenized-for-grpo
+data/KuaiRand-27K-with_feature/output_KuaiRand-27K-0501/
 data/KuaiRand-27K-with_feature/6_par*
 try_train/__pycache__/
 try_train/logs/
