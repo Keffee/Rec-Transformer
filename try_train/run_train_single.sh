@@ -1,1 +1,0 @@
-python train_single.py --config KuaiRand-27K-with-feature-kfwang
