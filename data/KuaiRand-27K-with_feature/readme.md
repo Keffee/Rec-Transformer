@@ -1,3 +1,6 @@
+# Before start
+
+We provide the item_id_to_rqcode.json for KuaiRand-27K-0501, just run step [1](#1-Data-split-by-timestamp) and step [4](#4-generate-data-for-llamarec-retrieval) and [5](#5-generate-data-for-verl) for quick start.
 
 # 0. Structure
 
@@ -26,7 +29,7 @@ The structure in this folder is like this:
 
 All the output will be saved under folder `output_{dataset}`. dataset can be `["KuaiRand-27K", "KuaiRand-27K-0501","KuaiRand-27K-100krows"]`
 
-# 1. Data split by timesamp
+# 1. Data split by timestamp
 ```sh
 # for full data: 
 python 1_1_generate_positive_train_test_based_on_timestamp.py --dataset KuaiRand-27K
@@ -95,7 +98,7 @@ CUDA_VISIBLE_DEVICES=2 nohup python ./python/main.py \
 
 You will get `best_item_embeddings.npy` in `f"output_{args.dataset}` 从第0行开始，第k行就是对应id=k的item.
 
-# .4_embedding_to_rq_code
+# 3. embedding_to_rq_code
 
 ```sh
 DATASET="KuaiRand-27K-0501"
@@ -115,7 +118,7 @@ CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
 
 会在此目录下生成`rqvae_output`文件夹，并包含`original_item_id_to_rq_code.json`文件，此文件正是原本的正样例序列中的item_id到rq_code的映射，choose the best one 复制到`output_KuaiRand-27K-0501`目录下
 
-4. 在本目录下运行
+4. generate data for llamarec retrieval
 
 ```sh
 cd ~/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-with_feature/
@@ -125,4 +128,5 @@ python 5_generate_rq_codes_pt_data.py --dataset KuaiRand-27K-0501
 ```
 它会利用`1_1_test.csv`和`4_item_id_to_rq_code.json`生成最终的符合LLaMA的pt格式的json`5_rq_codes_pt_data.json`，token之间用空格隔开，没出现在train中的id会自动补一个通用rq-code，padding会补成"0 0 0"
 
-5. 在本目录下运行`6_data_transform_from_pt_json_2_train_test_parquet.py`，它会读取`1_1_test.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从`1_1_test.csv`中获取的），然后按理来说会切分成answer部分是timestamp之后的子序列，input部分是timestamp之前的子序列，但是还是包含了padding，时间紧张所以没来得及优化。
+5. generate data for verl
+在本目录下运行`6_data_transform_from_pt_json_2_train_test_parquet.py`，它会读取 `1_1_KuaiRand-27K.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从 `1_1_KuaiRand-27K.csv`中获取的）

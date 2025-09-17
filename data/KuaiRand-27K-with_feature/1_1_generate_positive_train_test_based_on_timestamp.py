@@ -102,13 +102,13 @@ def analyze_chunk(df_chunk: pd.DataFrame, cutoff_timestamp: int) -> Tuple[List[D
             
     return chunk_results, local_max_after_len
 
-def process_and_split_data_parallel(input_files: List[str], train_output_path: str, all_output_path: str, cutoff_timestamp: int, num_processes: int = None):
+def process_and_split_data_parallel(input_files: List[str], all_output_path: str, cutoff_timestamp: int, num_processes: int = None):
     """
     通过多核并行处理多个CSV文件，筛选并按时间戳分割用户序列，最终生成统一的训练集和测试集文件。
 
     Args:
         input_files (List[str]): 输入的CSV文件路径列表。
-        train_output_path (str): 训练集输出路径。
+        
         all_output_path (str): 完整数据集输出路径。
         cutoff_timestamp (int): 分割时间戳。
         num_processes (int, optional): 使用的进程数。默认为机器的CPU核心数。
@@ -239,7 +239,7 @@ if __name__ == '__main__':
     os.makedirs(output_dir, exist_ok=True)
 
     # 定义输出文件
-    train_output_file = os.path.join(output_dir, "1_1_train.csv")
+    #train_output_file = os.path.join(output_dir, "1_1_train.csv")
     all_output_file = os.path.join(output_dir, "1_1_KuaiRand-27K.csv")
 
     
@@ -250,7 +250,6 @@ if __name__ == '__main__':
     # 您可以手动指定进程数，例如 num_processes=4
     process_and_split_data_parallel(
         input_files=input_file_list,
-        train_output_path=train_output_file,
         all_output_path=all_output_file,
         cutoff_timestamp=CUTOFF_TIMESTAMP,
         num_processes=8
