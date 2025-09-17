@@ -89,9 +89,4 @@ def eval_from_beams(
             m = _metrics_one(r, g, k, metrics)
             for name in out:
                 out[name][k] += m[name]
-
-    if B > 0:
-        for name in out:
-            for k in ks:
-                out[name][k] /= B
     return out

@@ -13,15 +13,11 @@ from collections import defaultdict
 import torch
 from torch.nn.utils.rnn import pad_sequence
 import time
-# --- 1. 复用你在 train.py 中定义好的核心组件 ---
-#    (为了让脚本独立可运行，我们直接将它们复制过来)
 
-# 导入 Transformers 和你的自定义模型代码
 from transformers import PreTrainedTokenizerFast
 from transformers.models.llama_rec.modeling_llamarec import LlamaRecForCausalLM
 from transformers import EvalPrediction
 
-# 忽略不必要的警告
 warnings.filterwarnings("ignore", category=UserWarning)
 
 import torch.distributed as dist
@@ -46,7 +42,6 @@ def setup_device():
 
 device = setup_device()
 
-# --- [复用] 预处理函数 ---
 def final_preprocess_function(examples: Dict[str, List[str]]) -> Dict[str, List[List[int]]]:
     all_sequences = []
     for text in examples["text"]:
@@ -55,16 +50,12 @@ def final_preprocess_function(examples: Dict[str, List[str]]) -> Dict[str, List[
             all_sequences.append(item_ids)
     return {"sequence": all_sequences}
 
-# --- [复用] 评估数据整理器 ---
 class EvalDataCollator: 
     def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
         self.tokenizer = tokenizer
         self.max_length = max_length
 
     def __call__(self, examples: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
-        # 1. 分离输入和标签 (原始 item ID)
-        #input_sequences_as_int = [e["sequence"][:-1] for e in examples]
-        #eval_labels_as_int = [e["sequence"][-1] for e in examples]
 
         all_inputs = [e["text"].split(" ") for e in examples]
         all_labels = [e["ground_truth"].split(" ") for e in examples]
@@ -78,107 +69,6 @@ class EvalDataCollator:
             return_tensors="pt"
         )
         return batch, all_labels
-
-'''
-class EvalDataCollator: 
-    def __init__(self, tokenizer: PreTrainedTokenizerFast, max_length: int):
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-
-    def __call__(self, examples: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
-        # 1. 分离输入和标签 (原始 item ID)
-        #input_sequences_as_int = [e["sequence"][:-1] for e in examples]
-        #eval_labels_as_int = [e["sequence"][-1] for e in examples]
-
-        all_inputs = [e["text"].split(" ") for e in examples]
-        all_labels = all_inputs
-        
-        all_inputs, all_labels = [], []
-        self.sid_len = 3 # the number of semantic token ids for one item id
-        self.tgt_pad_len = 5893*self.sid_len
-        # padded_sid_seq = ['<a_194>', '<b_63>', '<c_39>']
-        for idx, e in enumerate(examples):
-            tokens = e["text"].split(" ") # ['<a_13>', '<b_76>', '<c_117>', '<a_95>', '<b_66>', '<c_182>', '<a_194>', '<b_63>', '<c_39>'...]
-            hist_tokens = tokens[:-self.tgt_pad_len]
-            tgt_tokens = tokens[-self.tgt_pad_len:] 
-            
-            if idx==0:
-                print('hist_tokens firt 10: ', hist_tokens[:10])
-                print('hist_tokens - 10: ', hist_tokens[-10:])
-
-                print('tgt_tokens :10: ', tgt_tokens[:10] )
-            all_inputs.append(hist_tokens)
-            all_labels.append(tgt_tokens) 
-        # 2. 将输入序列的原始 ID 转换为字符串
-        #input_sequences_as_str = [[str(item_id) for item_id in seq] for seq in input_sequences_as_int]
-        # 3. 使用 tokenizer 对输入序列进行编码、截断和填充
-        batch = self.tokenizer(
-            all_inputs,
-            is_split_into_words=True,
-            padding=True,
-            truncation=True,
-            max_length=self.max_length,
-            return_tensors="pt"
-        )
-        batch_labels = self.tokenizer(
-            all_labels,
-            is_split_into_words=True,
-            padding=True,
-            truncation=True,
-            max_length=self.tgt_pad_len,
-            return_tensors="pt"
-        )        
-        # 4. 将评估标签的原始 ID 转换为 Token ID
-        #label_ids = self.tokenizer.convert_tokens_to_ids(all_labels)
-        batch["labels"] =  batch_labels['input_ids']
-        if self.tokenizer.pad_token_id is not None:
-            batch["labels"][batch["labels"] == self.tokenizer.pad_token_id] = -100
-        
-        return batch
-'''       
-
-# --- [复用] 流式指标计算器 ---
-class StreamingMetricsCalculator:
-    def __init__(self, k_values: List[int] = [1, 5, 10, 20, 50]):
-        self.k_values = k_values
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.all_ranks: List[torch.Tensor] = []
-
-    def accumulate(self, eval_preds: EvalPrediction):
-        """仅累积当前批次的排名"""
-        logits, labels_matrix = eval_preds.predictions, eval_preds.label_ids
-        
-        last_step_logits = logits[:, -1, :]
-        labels = labels_matrix.view(-1)
-
-        valid_mask = labels != -100
-        labels = labels[valid_mask]
-        last_step_logits = last_step_logits[valid_mask]
-
-        if labels.numel() > 0:
-            sorted_indices = torch.argsort(last_step_logits, descending=True, dim=-1)
-            ranks = (sorted_indices == labels.unsqueeze(-1)).nonzero(as_tuple=True)[1] + 1
-            self.all_ranks.append(ranks.cpu())
-
-    def compute(self) -> Dict[str, float]:
-        """计算并返回最终指标，然后重置状态"""
-        if not self.all_ranks:
-            return {"message": "No valid labels found during evaluation."}
-
-        final_ranks = torch.cat(self.all_ranks).float()
-        metrics = {}
-        for k in self.k_values:
-            in_top_k = final_ranks <= k
-            hr_k = in_top_k.float().mean().item()
-            metrics[f"HR@{k}"] = round(hr_k, 4)
-            ndcg_k = (1.0 / torch.log2(final_ranks + 1.0)).where(in_top_k, 0.0).mean().item()
-            metrics[f"NDCG@{k}"] = round(ndcg_k, 4)
-
-        metrics["MRR"] = round((1.0 / final_ranks).mean().item(), 4)
-        
-        # 重置状态
-        self.all_ranks = []
-        return metrics
 
 def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> torch.Tensor:
     """
@@ -198,32 +88,7 @@ def map_triplets_outputs(outputs: torch.Tensor, tokenizer, tokens2iid: dict) -> 
             out[b, j] = tokens2iid.get(trip, -1)  # -1 if not found
     return out
 
-
-def map_triplets_labels(labels: torch.Tensor, tokenizer, tokens2iid: dict, ignore_index: int = -100) -> torch.Tensor:
-    """
-    Map labels [B, seqlen, 3] to [B, seqlen] new ids.
-    Any triplet containing ignore_index is skipped -> -1.
-    """
-    B, L, T = labels.shape
-    flat_ids = labels.detach().cpu().view(-1).tolist()
-    triplets = [tuple(flat_ids[i:i+T]) for i in range(0, len(flat_ids), T)]
-
-    out = torch.full((B, L), -1, dtype=torch.long)
-    idx = 0
-    for b in range(B):
-        for j in range(L):
-            trip = triplets[idx]; idx += 1
-            # if this label row contains ignore_index anywhere → drop
-            if (labels[b, j] == ignore_index).any():
-                continue
-            # id to tokens 
-            toks = tuple(tokenizer.convert_ids_to_tokens(trip))
-            out[b, j] = tokens2iid.get(toks, -1)
-    return out
-
-# --- 2. 评估主函数 ---
 def evaluate_checkpoint():
-    # <<< 新增: 解析命令行参数以获取配置文件路径 >>>
     parser = argparse.ArgumentParser(description="Train a LlamaRec model using a YAML config file.")
     parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the saved model checkpoint directory.")
     parser.add_argument("--eval_batch_size", type=int, default=128, help="Batch size for evaluation.")
@@ -269,20 +134,16 @@ def evaluate_checkpoint():
         for vid, toks in iid2tokens.items()
     }
 
-    # <<< 新增: 读取并解析 YAML 配置文件 >>>
     print(f"Loading configuration from: {args.config}")
     current_dir_name = os.path.dirname(os.path.abspath("__file__"))
     config_path = os.path.join(current_dir_name, "pretrain_config", args.config+'.yaml')
     with open(config_path, 'r') as f:
         config_data = yaml.safe_load(f)
 
-    # <<< 新增: 从解析的数据中提取配置组 >>>
     paths_config = config_data['paths']
     model_params = config_data['model_params']
     training_args_dict = config_data['training_args']
-    # dataset_split_config = config_data['dataset_split']
 
-    # 使用从配置中读取的参数
     dataset_path = dict(
         train=paths_config['train_dataset_path'],
         test=paths_config['test_dataset_path']
@@ -297,12 +158,11 @@ def evaluate_checkpoint():
     test_dataset = test_dataset_full.select(range(len(test_dataset_full) - test_num, len(test_dataset_full)))
     print(f"Test on ratio_last {args.eval_ratio_last:.2f}, {test_num}/{total} samples ({test_num/total:.2%})")
 
-    # --- 加载模型和 Tokenizer ---
     print("\n--- Loading Model & Tokenizer ---")
     tokenizer = PreTrainedTokenizerFast.from_pretrained(args.checkpoint_path)
     model = LlamaRecForCausalLM.from_pretrained(args.checkpoint_path)
     model.to(device)
-    model.eval() # **非常重要**：切换到评估模式
+    model.eval() 
     print(f"Model loaded with {model.num_parameters() / 1e6:.2f} M parameters.")
     eval_collator = EvalDataCollator(tokenizer=tokenizer, max_length=model_params['max_seq_length'])
     eval_dataloader = DataLoader(
@@ -313,16 +173,11 @@ def evaluate_checkpoint():
         pin_memory=True
     )    
 
-    total_batches = len(eval_dataloader)
     metrics_sum = defaultdict(lambda: defaultdict(float))
-    num_batches = 0
     all_results = []  
 
-    # --- 手动评估循环 ---
     print("\n--- Starting Evaluation Loop ---")
-    
-    #with open("eval_results.jsonl", "w", encoding="utf-8") as f:
-    with torch.no_grad(): # **非常重要**：禁用梯度计算，节省显存和计算资源
+    with torch.no_grad(): 
         for batch, labels in tqdm(eval_dataloader, desc="Evaluating"):
             batch = {k: v.to(device) for k, v in batch.items()}
             batch.pop("token_type_ids", None)
@@ -364,19 +219,10 @@ def evaluate_checkpoint():
             for metric_name, ks_dict in eval_pred.items():
                 for k, value in ks_dict.items():
                     metrics_sum[metric_name][k] += value
-            '''
-            #for i in range(len(out_ids)):
-            for i in range(1):
-                result = {
-                    "input": tokenizer.decode(batch["input_ids"][i].tolist(), skip_special_tokens=True),
-                    "output": out_ids[i].tolist() if torch.is_tensor(out_ids[i]) else out_ids[i],
-                    "groundtruth": lab_ids[i]
-                }
-                f.write(json.dumps(result, ensure_ascii=False) + "\n")
-            '''
+
         metrics_avg = {}
         for metric_name, ks_dict in metrics_sum.items():
-            metrics_avg[metric_name] = {k: v / num_batches for k, v in ks_dict.items()}
+            metrics_avg[metric_name] = {k: v / test_num for k, v in ks_dict.items()}
 
         formatted_metrics = {
             metric_name: {k: f"{v:.4f}" for k, v in ks_dict.items()}
@@ -384,7 +230,9 @@ def evaluate_checkpoint():
         }
 
         print("Average metrics:", formatted_metrics)
-
+        output_dir_eval = "output_eval"
+        os.makedirs(output_dir_eval, exist_ok=True)
+        output_file = os.path.join(output_dir_eval, f"{run_name}_metrics.json")
         output_file = f"{run_name}_metrics.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(formatted_metrics, f, indent=2, ensure_ascii=False)
