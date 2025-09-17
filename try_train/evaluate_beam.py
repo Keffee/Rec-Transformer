@@ -230,7 +230,7 @@ def evaluate_checkpoint():
     parser.add_argument('--rq_map_path', type=str, default='4_item_id_to_rq_code.json',
                         help="Path to the JSON file mapping original item IDs to RQ codes (e.g., '4_item_id_to_rq_code.json').")
                         
-    parser.add_argument("--config", type=str, required=True, help="Name of the config file to use. For example: pantry")
+    parser.add_argument("--config", type=str, required=True, help="Name of the config file to use.")
 
     parser.add_argument("--lensid", type=int, default=3, help="the length of semantic tokens")
     parser.add_argument("--decode-strategy", type=str, choices=["beam", "topk-topp"], default="beam", help="Decoding strategy: 'beam' for beam search or 'topk-topp' for nucleus/top-k sampling")
@@ -239,7 +239,7 @@ def evaluate_checkpoint():
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p (nucleus) sampling probability, used if --decode-strategy=topk-topp")
     parser.add_argument("--top-k", type=int, default=50, help="Top-k sampling cutoff, used if --decode-strategy=topk-topp")
 
-    parser.add_argument("--eval-ratio", type=float, default=1.0, help="Fraction of evaluation set to use (0 < ratio ≤ 1.0)")
+    parser.add_argument("--eval-ratio-last", type=float, default=1.0, help="Fraction of evaluation set to use (0 < ratio ≤ 1.0), the last part of the whole dataset")
 
     parser.add_argument(
         "--metrics", type=str, nargs="+",
@@ -247,18 +247,18 @@ def evaluate_checkpoint():
         help="List of metrics to compute, e.g. --metrics HR NDCG Recall"
     )
     # ["HR", "Recall", "Precision", "NDCG", "MRR", "MAP"],
-    parser.add_argument("--ks", type=int, nargs="+", default=[20, 50, 100],
+    parser.add_argument("--ks", type=int, nargs="+", default=[10, 50, 100, 200],
         help="List of cutoff values for evaluation metrics, e.g. --ks 20 50 100")
 
     args = parser.parse_args()
-
+    print(args.ks)
     if args.decode_strategy == "beam":
         assert args.num_return_sequences <= args.num_beams, \
             f"num_return_sequences ({args.num_return_sequences}) must be <= num_beams ({args.num_beams}) when using beam search."
         run_name = f"{args.config}_beam{args.num_beams}_ret{args.num_return_sequences}"
     elif args.decode_strategy == "topk-topp":
         run_name = (
-            f"{args.config}_topk{args.top_k}_topp{args.top_p}_ret{args.num_return_sequences}_evalratio{args.eval_ratio}"
+            f"{args.config}_topk{args.top_k}_topp{args.top_p}_ret{args.num_return_sequences}_evalratio{args.eval_ratio_last}"
         )
 
     with open(args.rq_map_path, "r") as f:
@@ -291,7 +291,12 @@ def evaluate_checkpoint():
     tokenizer_dir = paths_config['tokenizer_dir']
     max_seq_length = model_params['max_seq_length']
 
-    test_dataset = load_dataset("json", data_files=dataset_path, split="test")
+    test_dataset_full = load_dataset("json", data_files=dataset_path, split="test")
+    total = len(test_dataset_full)
+    test_num = int(total * args.eval_ratio_last)
+    test_dataset = test_dataset_full.select(range(len(test_dataset_full) - test_num, len(test_dataset_full)))
+    print(f"Test on ratio_last {args.eval_ratio_last:.2f}, {test_num}/{total} samples ({test_num/total:.2%})")
+
     # --- 加载模型和 Tokenizer ---
     print("\n--- Loading Model & Tokenizer ---")
     tokenizer = PreTrainedTokenizerFast.from_pretrained(args.checkpoint_path)
@@ -309,7 +314,6 @@ def evaluate_checkpoint():
     )    
 
     total_batches = len(eval_dataloader)
-    max_batches = int(total_batches * args.eval_ratio)
     metrics_sum = defaultdict(lambda: defaultdict(float))
     num_batches = 0
     all_results = []  
@@ -317,64 +321,60 @@ def evaluate_checkpoint():
     # --- 手动评估循环 ---
     print("\n--- Starting Evaluation Loop ---")
     
-    with open("eval_results.jsonl", "w", encoding="utf-8") as f:
-        with torch.no_grad(): # **非常重要**：禁用梯度计算，节省显存和计算资源
-            for batch, labels in tqdm(eval_dataloader, desc="Evaluating"):
-                batch = {k: v.to(device) for k, v in batch.items()}
-                batch.pop("token_type_ids", None)
+    #with open("eval_results.jsonl", "w", encoding="utf-8") as f:
+    with torch.no_grad(): # **非常重要**：禁用梯度计算，节省显存和计算资源
+        for batch, labels in tqdm(eval_dataloader, desc="Evaluating"):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            batch.pop("token_type_ids", None)
 
-                start_time = time.time() 
-                if args.decode_strategy == "beam":
-                    outputs_beam = model.generate(
-                        **batch,
-                        max_length=args.lensid + int(model_params['max_seq_length']),
-                        num_beams=args.num_beams,
-                        num_return_sequences=args.num_return_sequences,
-                        early_stopping=True
-                    )
+            start_time = time.time() 
+            if args.decode_strategy == "beam":
+                outputs_beam = model.generate(
+                    **batch,
+                    max_length=args.lensid + int(model_params['max_seq_length']),
+                    num_beams=args.num_beams,
+                    num_return_sequences=args.num_return_sequences,
+                    early_stopping=True
+                )
 
-                elif args.decode_strategy == "topk-topp":
-                    outputs_beam = model.generate(
-                        **batch,
-                        max_length=args.lensid + int(model_params['max_seq_length']),
-                        do_sample=True,
-                        top_k=args.top_k,
-                        top_p=args.top_p,
-                        num_return_sequences=args.num_return_sequences,
-                        early_stopping=True
-                    )
-                end_time = time.time() 
+            elif args.decode_strategy == "topk-topp":
+                outputs_beam = model.generate(
+                    **batch,
+                    max_length=args.lensid + int(model_params['max_seq_length']),
+                    do_sample=True,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
+                    num_return_sequences=args.num_return_sequences,
+                    early_stopping=True
+                )
+            end_time = time.time() 
 
-                elapsed_minutes = (end_time - start_time) / 60
-                print(f"beam Time spent: {elapsed_minutes:.2f} minutes")
+            elapsed_minutes = (end_time - start_time) / 60
+            print(f"beam Time spent: {elapsed_minutes:.2f} minutes")
 
-                generate_only = outputs_beam[:,-args.lensid:]
-                outputs = generate_only.view(args.eval_batch_size, args.num_return_sequences, args.lensid) # [B,nbeam,3]
-                lab_ids = labels
-                out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
-                # convert to list of tensors (int)
-                lab_ids_int = [torch.tensor([int(x) for x in row], dtype=torch.long) for row in lab_ids]
-                # pad them to the same length
-                lab_tensor = pad_sequence(lab_ids_int, batch_first=True, padding_value=-100)
-                eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=(20, 50,100), metrics=args.metrics)            
-                
-                for metric_name, ks_dict in eval_pred.items():
-                    for k, value in ks_dict.items():
-                        metrics_sum[metric_name][k] += value
-                num_batches += 1
-
-                if num_batches>= max_batches:
-                    break
-
-                #for i in range(len(out_ids)):
-                for i in range(1):
-                    result = {
-                        "input": tokenizer.decode(batch["input_ids"][i].tolist(), skip_special_tokens=True),
-                        "output": out_ids[i].tolist() if torch.is_tensor(out_ids[i]) else out_ids[i],
-                        "groundtruth": lab_ids[i]
-                    }
-                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
-
+            generate_only = outputs_beam[:,-args.lensid:]
+            outputs = generate_only.view(args.eval_batch_size, args.num_return_sequences, args.lensid) # [B,nbeam,3]
+            lab_ids = labels
+            out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
+            # convert to list of tensors (int)
+            lab_ids_int = [torch.tensor([int(x) for x in row], dtype=torch.long) for row in lab_ids]
+            # pad them to the same length
+            lab_tensor = pad_sequence(lab_ids_int, batch_first=True, padding_value=-100)
+            eval_pred = eval_from_beams(out_ids, lab_tensor, ignore_index=-100, ks=(20, 50,100), metrics=args.metrics)            
+            
+            for metric_name, ks_dict in eval_pred.items():
+                for k, value in ks_dict.items():
+                    metrics_sum[metric_name][k] += value
+            '''
+            #for i in range(len(out_ids)):
+            for i in range(1):
+                result = {
+                    "input": tokenizer.decode(batch["input_ids"][i].tolist(), skip_special_tokens=True),
+                    "output": out_ids[i].tolist() if torch.is_tensor(out_ids[i]) else out_ids[i],
+                    "groundtruth": lab_ids[i]
+                }
+                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            '''
         metrics_avg = {}
         for metric_name, ks_dict in metrics_sum.items():
             metrics_avg[metric_name] = {k: v / num_batches for k, v in ks_dict.items()}
