@@ -80,6 +80,7 @@ def analyze_chunk(df_chunk: pd.DataFrame, cutoff_timestamp: int) -> Tuple[List[D
                 # 如果满足有效互动条件，则根据时间戳分类
                 if action_sum >= 1:
                     timestamp = int(timestamps[i])
+                    print(timestamp)
                     if timestamp < cutoff_timestamp:
                         before_items.append(item_ids[i])
                     else:
@@ -225,7 +226,8 @@ if __name__ == '__main__':
     # Map version → base directory
     version_map = {
         "KuaiRand-27K": "../../../../data/kuairand/KuaiRand-27K-Processed",
-        "KuaiRand-27K-0501": "../../../../data/kuairand/KuaiRand-27K-0501-Processed"
+        "KuaiRand-27K-0501": "../../../../data/kuairand/KuaiRand-27K-0501-Processed",
+        "KuaiRand-27K-100krows": "../../../../data/kuairand/KuaiRand-27K-100krows-Processed",
     }
     base_dir = version_map[args.dataset]
 
@@ -245,6 +247,9 @@ if __name__ == '__main__':
     
     # 定义分割时间戳
     CUTOFF_TIMESTAMP = 1651795200000
+
+    if 'rows' in args.dataset:
+        CUTOFF_TIMESTAMP = 1650031511721
     
     # 调用新的并行处理与分割函数
     # 您可以手动指定进程数，例如 num_processes=4

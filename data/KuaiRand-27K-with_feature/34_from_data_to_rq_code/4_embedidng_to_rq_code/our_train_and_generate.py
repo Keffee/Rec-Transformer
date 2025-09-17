@@ -127,7 +127,8 @@ if __name__ == '__main__':
     args.output_dir = os.path.join(run_dir, 'rqvae_output')
     os.makedirs(args.output_dir, exist_ok=True) 
     base_output_dir = "../../output_"+args.dataset
-    args.sasrec_emb_path=os.path.join(base_output_dir,"item_embeddings_sasrec.npy")
+    #args.sasrec_emb_path=os.path.join(base_output_dir,"item_embeddings_sasrec.npy")
+    args.sasrec_emb_path=os.path.join(base_output_dir,"best_item_embeddings.npy")
 
 
     # --- 训练阶段 ---

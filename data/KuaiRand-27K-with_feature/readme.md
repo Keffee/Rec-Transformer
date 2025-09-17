@@ -68,6 +68,31 @@ CUDA_VISIBLE_DEVICES=1 nohup python ./python/main.py \
     --lr=$LR \
     > $LOG_FILE 2>&1 &
 
+# for 100krows
+DATASET="KuaiRand-27K-100krows"
+LEN=50
+BS=6
+DIM_FEAT=64
+DIM_HIDDEN=128
+LR=0.001
+PATIENCE=3
+
+LOG_DIR="output_${DATASET}"
+mkdir -p $LOG_DIR
+
+LOG_FILE="${LOG_DIR}/train_len${LEN}_bs${BS}_feat${DIM_FEAT}_hidden${DIM_HIDDEN}_lr${LR}_pat${PATIENCE}.log"
+
+CUDA_VISIBLE_DEVICES=1 nohup python ./python/main.py \
+    --dataset=$DATASET \
+    --maxlen=$LEN \
+    --batch_size=$BS \
+    --feature_emb_dim=$DIM_FEAT \
+    --hidden_units=$DIM_HIDDEN \
+    --patience=$PATIENCE \
+    --lr=$LR \
+    > $LOG_FILE 2>&1 &
+
+
 # for full data
 
 DATASET="KuaiRand-27K"
@@ -101,11 +126,31 @@ You will get `best_item_embeddings.npy` in `f"output_{args.dataset}` 从第0行�
 # 3. embedding_to_rq_code
 
 ```sh
+# 0501
 DATASET="KuaiRand-27K-0501"
 BS=4096
 D=128
 LR=1e-3
 NUM_EMB_LIST="8000 8000 8000"
+LOG_DIR="output_${DATASET}"
+mkdir -p $LOG_DIR
+CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
+  --dataset $DATASET \
+  --e_dim $D \
+  --lr $LR \
+  --batch_size $BS \
+  --num_emb_list $NUM_EMB_LIST \
+  > "${LOG_DIR}/log_${DATASET}_bs${BS}_d${D}_lr${LR}_emb${NUM_EMB_LIST// /-}.out" 2>&1 &
+
+# 100krows
+DATASET="KuaiRand-27K-100krows"
+BS=8
+D=128
+LR=1e-3
+NUM_EMB_LIST="100 100 100"
+
+LOG_DIR="output_${DATASET}"
+mkdir -p $LOG_DIR
 
 CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
   --dataset $DATASET \
@@ -113,7 +158,9 @@ CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
   --lr $LR \
   --batch_size $BS \
   --num_emb_list $NUM_EMB_LIST \
-  > output_KuaiRand-27K-0501/log_${DATASET}_bs${BS}_d${D}_lr${LR}_emb${NUM_EMB_LIST// /-}.out 2>&1 &
+  > "${LOG_DIR}/log_${DATASET}_bs${BS}_d${D}_lr${LR}_emb${NUM_EMB_LIST// /-}.out" 2>&1 &
+
+
 ```
 
 会在此目录下生成`rqvae_output`文件夹，并包含`original_item_id_to_rq_code.json`文件，此文件正是原本的正样例序列中的item_id到rq_code的映射，choose the best one 复制到`output_KuaiRand-27K-0501`目录下
@@ -129,4 +176,8 @@ python 5_generate_rq_codes_pt_data.py --dataset KuaiRand-27K-0501
 它会利用`1_1_test.csv`和`4_item_id_to_rq_code.json`生成最终的符合LLaMA的pt格式的json`5_rq_codes_pt_data.json`，token之间用空格隔开，没出现在train中的id会自动补一个通用rq-code，padding会补成"0 0 0"
 
 5. generate data for verl
-在本目录下运行`6_data_transform_from_pt_json_2_train_test_parquet.py`，它会读取 `1_1_KuaiRand-27K.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从 `1_1_KuaiRand-27K.csv`中获取的）
+```sh
+python 6_data_transform_from_pt_json_2_train_test_parquet.py --data_source_name KuaiRand-27K-{data}
+```
+
+它会读取 `1_1_KuaiRand-27K.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从 `1_1_KuaiRand-27K.csv`中获取的）

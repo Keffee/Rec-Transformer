@@ -17,7 +17,7 @@ def main():
 
     print("--- 开始处理 ---")
     print(f"加载文本数据源: {args.input_json}")
-
+    args.input_json = os.path.join('output_'+args.data_source_name, args.input_json)
     try:
         df = pd.read_json(args.input_json)
     except FileNotFoundError as e:
@@ -105,6 +105,7 @@ def main():
     else:
         processed_test_dataset = datasets.Dataset.from_list([], features=final_features)
 
+    args.output_dir = os.path.join(args.output_dir,args.data_source_name)
     os.makedirs(args.output_dir, exist_ok=True)
     train_output_path = os.path.join(args.output_dir, "train.parquet")
     test_output_path = os.path.join(args.output_dir, "test.parquet")
