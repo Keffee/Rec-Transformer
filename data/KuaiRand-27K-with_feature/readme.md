@@ -1,6 +1,3 @@
-# Before start
-
-We provide the item_id_to_rqcode.json for KuaiRand-27K-0501, just run step [1](#1-Data-split-by-timestamp) and step [4](#4-generate-data-for-llamarec-retrieval) and [5](#5-generate-data-for-verl) for quick start.
 
 # 0. Structure
 
