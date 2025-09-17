@@ -178,8 +178,7 @@ def main():
 
     # <<< 新增: 读取并解析 YAML 配置文件 >>>
     print(f"Loading configuration from: {cli_args.config}")
-    current_dir_name = os.path.dirname(os.path.abspath("__file__"))
-    config_path = os.path.join(current_dir_name, "pretrain_config", cli_args.config+'.yaml')
+    config_path = os.path.join( "pretrain_config", cli_args.config+'.yaml')
     with open(config_path, 'r') as f:
         config_data = yaml.safe_load(f)
 
