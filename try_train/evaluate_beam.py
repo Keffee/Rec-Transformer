@@ -351,9 +351,8 @@ def evaluate_checkpoint():
 
             elapsed_minutes = (end_time - start_time) / 60
             print(f"beam Time spent: {elapsed_minutes:.2f} minutes")
-
             generate_only = outputs_beam[:,-args.lensid:]
-            outputs = generate_only.view(args.eval_batch_size, args.num_return_sequences, args.lensid) # [B,nbeam,3]
+            outputs = generate_only.view(-1, args.num_return_sequences, args.lensid) # [B,nbeam,3]
             lab_ids = labels
             out_ids = map_triplets_outputs(outputs, tokenizer, tokens2iid=tokens2iid)
             # convert to list of tensors (int)
