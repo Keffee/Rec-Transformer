@@ -131,13 +131,31 @@ LR=1e-3
 NUM_EMB_LIST="8000 8000 8000"
 LOG_DIR="output_${DATASET}"
 mkdir -p $LOG_DIR
-CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
+CUDA_VISIBLE_DEVICES=4 nohup python our_train_and_generate.py \
   --dataset $DATASET \
   --e_dim $D \
   --lr $LR \
   --batch_size $BS \
   --num_emb_list $NUM_EMB_LIST \
   > "${LOG_DIR}/log_${DATASET}_bs${BS}_d${D}_lr${LR}_emb${NUM_EMB_LIST// /-}.out" 2>&1 &
+
+# full
+
+DATASET="KuaiRand-27K"
+BS=4096
+D=128
+LR=1e-3
+NUM_EMB_LIST="8000 8000 8000"
+LOG_DIR="output_${DATASET}"
+mkdir -p $LOG_DIR
+CUDA_VISIBLE_DEVICES=4 nohup python our_train_and_generate.py \
+  --dataset $DATASET \
+  --e_dim $D \
+  --lr $LR \
+  --batch_size $BS \
+  --num_emb_list $NUM_EMB_LIST \
+  > "${LOG_DIR}/log_${DATASET}_bs${BS}_d${D}_lr${LR}_emb${NUM_EMB_LIST// /-}.out" 2>&1 &
+
 
 # 100krows
 DATASET="KuaiRand-27K-100krows"
@@ -149,7 +167,7 @@ NUM_EMB_LIST="100 100 100"
 LOG_DIR="output_${DATASET}"
 mkdir -p $LOG_DIR
 
-CUDA_VISIBLE_DEVICES=4 python our_train_and_generate.py \
+CUDA_VISIBLE_DEVICES=4 nohup python our_train_and_generate.py \
   --dataset $DATASET \
   --e_dim $D \
   --lr $LR \
@@ -174,7 +192,7 @@ python 5_generate_rq_codes_pt_data.py --dataset KuaiRand-27K-0501
 
 5. generate data for verl
 ```sh
-python 6_data_transform_from_pt_json_2_train_test_parquet.py --data_source_name KuaiRand-27K-{data}
+python 6_data_transform_from_pt_json_2_train_test_parquet.py --data_source_name KuaiRand-27K-{data-version}
 ```
 
 它会读取 `1_1_KuaiRand-27K.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从 `1_1_KuaiRand-27K.csv`中获取的）

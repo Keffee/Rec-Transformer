@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('--dataset', required=True,choices=["KuaiRand-27K", "KuaiRand-27K-0501","KuaiRand-27K-100krows"])
     
     # --- 输入/输出路径参数 ---
-    parser.add_argument("--sasrec_emb_path", type=str, default=r'/zhdd/home/kfwang/20250813Reproduct_Onerec/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K/KuaiRand-27K-Processed/34_from_data_to_rq_code/3_data_to_embedding/SASRec.pytorch/KuaiRand_27K_default_unfinished_but_stoped_earlier/item_embeddings_24epoch.npy',
+    parser.add_argument("--sasrec_emb_path", type=str,
                         help="Path to the item embeddings .npy file. Assumes index corresponds to original item ID.")
     parser.add_argument("--ckpt_dir", type=str, default="./rqvae_checkpoints",
                         help="Directory to save RQ-VAE model checkpoints.")
