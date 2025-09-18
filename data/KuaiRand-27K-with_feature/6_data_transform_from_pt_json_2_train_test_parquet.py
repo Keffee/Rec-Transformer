@@ -3,42 +3,23 @@ import os
 import json
 import datasets
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 def main():
     parser = argparse.ArgumentParser(description="将自定义的推荐数据集转换为VeRL风格的Parquet格式，并自动划分为训练集和测试集。")
-    # --- 修改: 增加了 user_id_csv 参数 ---
-    parser.add_argument("--input_json", type=str, default='5_rq_codes_pt_data.json', help="输入的JSON文件路径，包含 'text' 字段。")
-    parser.add_argument("--user_id_csv", type=str, default='1_1_test.csv', help="包含 user_id 的CSV文件路径，需与JSON文件行对应。")
-    # ------------------------------------
-    parser.add_argument("--output_dir", type=str, default='./6_parquet_for_verl', help="输出Parquet文件的目录。")
-    parser.add_argument("--data_source_name", type=str, default="KuaiRand-27K-demo", help="为数据源指定一个名称。")
+    parser.add_argument("--input_json", type=str, default='5_KuaiRand-27K_pt_data_check.json', help="输入的JSON文件路径。")
+    parser.add_argument("--output_dir", type=str, default='./6_try_parquet_for_verl', help="输出Parquet文件的目录。")
+    parser.add_argument("--data_source_name", type=str, default="KuaiRand-27K", help="为数据源指定一个名称。")
     parser.add_argument("--test_size", type=float, default=0.1, help="测试集所占的比例。")
     parser.add_argument("--seed", type=int, default=42, help="用于划分数据集的随机种子，确保可复现。")
-    
+
     args = parser.parse_args()
 
     print("--- 开始处理 ---")
     print(f"加载文本数据源: {args.input_json}")
-    print(f"加载用户ID数据源: {args.user_id_csv}")
 
     try:
-        # --- 修改: 分别加载 JSON 和 CSV，然后合并 ---
-        df_text = pd.read_json(args.input_json)
-        df_users = pd.read_csv(args.user_id_csv)
-
-        # 校验：确保两个文件的行数完全一致
-        if len(df_text) != len(df_users):
-            raise ValueError(
-                f"输入文件行数不匹配！JSON文件有 {len(df_text)} 行, "
-                f"而CSV文件有 {len(df_users)} 行。它们必须严格对应。"
-            )
-
-        # 将 user_id 列添加到主 DataFrame 中
-        df_text['user_id'] = df_users['user_id']
-        
-        # 从合并后的 DataFrame 创建 Hugging Face Dataset
-        dataset = datasets.Dataset.from_pandas(df_text)
-        
+        df = pd.read_json(args.input_json)
     except FileNotFoundError as e:
         print(f"错误：输入文件未找到。请检查路径。详细信息: {e}")
         return
@@ -46,45 +27,26 @@ def main():
         print(f"加载数据时发生错误: {e}")
         return
 
-    # 划分数据集 (这部分逻辑保持不变)
     print(f"\n正在划分数据集... 测试集比例: {args.test_size}, 随机种子: {args.seed}")
-    if len(dataset) < 2 or (len(dataset) * args.test_size < 1):
-        print("警告：数据集太小，无法进行有效的训练/测试集划分。将所有数据用作训练集。")
-        train_original_dataset = dataset
-        # 创建一个空的测试集以避免后续代码出错
-        test_original_dataset = dataset.select([]) 
+    if len(df) < 2 or (len(df) * args.test_size < 1):
+        print("警告：数据集太小，将所有数据用作训练集。")
+        train_df = df
+        test_df = df.iloc[0:0]
     else:
-        split_dataset = dataset.train_test_split(test_size=args.test_size, seed=args.seed)
-        train_original_dataset = split_dataset['train']
-        test_original_dataset = split_dataset['test']
-        
-    print(f"划分完成 -> 训练集大小: {len(train_original_dataset)}, 测试集大小: {len(test_original_dataset)}")
+        train_df, test_df = train_test_split(df, test_size=args.test_size, random_state=args.seed)
 
-    # 创建一个映射函数
-    def make_map_fn(split_name):
-        def process_fn(example, idx):
-            # --- 修改: 核心处理逻辑重写 ---
-            text_raw = example.get("text", "")
-            user_id = example.get("user_id", "N/A") # 从合并后的数据中获取 user_id
+    print(f"划分完成 -> 训练集大小: {len(train_df)}, 测试集大小: {len(test_df)}")
 
-            # 1. 根据空格分割 token
-            tokens = text_raw.split()
+    def process_dataframe_to_list(df, split_name):
+        processed_list = []
+        for idx, row in df.iterrows():
+            text = row.get("text", "")
+            user_id = row.get("user_id", "N/A")
+            ground_truth_text = row.get("ground_truth", "")
 
-            # 2. 根据新的规则确定 prompt 和 ground_truth
-            # 使用6223是因为似乎test子序列的最终填充结果长度是6223
-            if len(tokens) >= 3*6223:
-                prompt_tokens = tokens[:-3*6223]
-                ground_truth_tokens = tokens[-3*6223:]
-                
-                prompt_content = " ".join(prompt_tokens)
-                ground_truth = " ".join(ground_truth_tokens)
-            else:
-                # 处理序列长度小于3的边界情况
-                print(f"警告：在处理索引 {idx} 时，token 数量 ({len(tokens)}) 小于3*6223。将使用全部内容作为 ground_truth。\n这通常不应该发生，得去看看是不是第5步test生成的时候没有顺利生成正确长度的rq编码，不过也可以先忽略反正强化也能勉强跑起来")
-                prompt_content = ""
-                ground_truth = text_raw
+            prompt_content = " ".join(text.split())
+            ground_truth = " ".join(ground_truth_text.split())
 
-            # 3. 构建新的输出字典
             processed_data = {
                 "data_source": args.data_source_name,
                 "prompt": [{"role": "user", "content": prompt_content}],
@@ -97,42 +59,34 @@ def main():
                     "split": split_name
                 },
             }
-            # -------------------------------------
-            return processed_data
-        return process_fn
+            processed_list.append(processed_data)
+        return processed_list
 
-    # 应用转换 (这部分逻辑保持不变，但内部的 process_fn 已更新)
     print("\n正在转换训练集格式...")
-    processed_train_dataset = train_original_dataset.map(
-        function=make_map_fn("train"), 
-        with_indices=True,
-        # 移除处理前的列: 'text' 和 'user_id'
-        remove_columns=train_original_dataset.column_names 
-    )
+    train_data_list = process_dataframe_to_list(train_df, "train")
 
     print("正在转换测试集格式...")
-    if len(test_original_dataset) > 0:
-        processed_test_dataset = test_original_dataset.map(
-            function=make_map_fn("test"),
-            with_indices=True,
-            remove_columns=test_original_dataset.column_names
-        )
-    else:
-        processed_test_dataset = test_original_dataset # 保持为空
+    test_data_list = process_dataframe_to_list(test_df, "test")
 
-    # 保存文件 (这部分逻辑保持不变)
+    print("\n正在从处理后的列表创建 Hugging Face Datasets...")
+    processed_train_dataset = datasets.Dataset.from_list(train_data_list)
+    
+    if test_data_list:
+        processed_test_dataset = datasets.Dataset.from_list(test_data_list)
+    else:
+        processed_test_dataset = datasets.Dataset.from_list([])
+
     os.makedirs(args.output_dir, exist_ok=True)
     train_output_path = os.path.join(args.output_dir, "train.parquet")
     test_output_path = os.path.join(args.output_dir, "test.parquet")
-    
+
     print(f"\n正在保存处理后的训练集到: {train_output_path}")
     processed_train_dataset.to_parquet(train_output_path)
-    
+
     if len(processed_test_dataset) > 0:
         print(f"正在保存处理后的测试集到: {test_output_path}")
         processed_test_dataset.to_parquet(test_output_path)
 
-    # 打印示例 (这部分逻辑保持不变)
     print("\n--- 处理完成！ ---")
     if len(processed_train_dataset) > 0:
         print("\n查看一条转换后的【训练集】数据示例:")
