@@ -188,11 +188,10 @@ cd ~/Fuxi-OneRec/Rec-Transformer/data/KuaiRand-27K-with_feature/
 python 5_generate_rq_codes_pt_data.py --dataset KuaiRand-27K-0501
 
 ```
-它会利用`1_1_test.csv`和`4_item_id_to_rq_code.json`生成最终的符合LLaMA的pt格式的json`5_rq_codes_pt_data.json`，token之间用空格隔开，没出现在train中的id会自动补一个通用rq-code，padding会补成"0 0 0"
+它会利用`1_1_test.csv`和`4_item_id_to_rq_code.json`生成最终的符合LLaMA的pt格式的json`5_rq_codes_pt_data.json`
 
 5. generate data for verl
 ```sh
 python 6_data_transform_from_pt_json_2_train_test_parquet.py --data_source_name KuaiRand-27K-{data-version}
 ```
-
-它会读取 `1_1_KuaiRand-27K.csv`和`5_rq_codes_pt_data.json`在`6_parquet_for_verl`生成train和test的parquet，其中extra_info中已经包含user_id（此user_id是根据对应第几行从 `1_1_KuaiRand-27K.csv`中获取的）
+The output files are saved into `6_parquet_for_verl/KuaiRand-27K-{data-version}`
