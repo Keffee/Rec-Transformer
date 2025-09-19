@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 
 def main():
     parser = argparse.ArgumentParser(description="将自定义的推荐数据集转换为VeRL风格的Parquet格式，并自动划分为训练集和测试集。")
-    parser.add_argument("--input_json", type=str, default='5_KuaiRand-27K_pt_data_check.json', help="输入的JSON文件路径。")
-    parser.add_argument("--output_dir", type=str, default='./6_try_parquet_for_verl', help="输出Parquet文件的目录。")
+    parser.add_argument("--input_json", type=str, default='5_KuaiRand-27K_pt_data.json', help="输入的JSON文件路径。")
+    parser.add_argument("--output_dir", type=str, default='./6_parquet_for_verl', help="输出Parquet文件的目录。")
     parser.add_argument("--data_source_name", type=str, default="KuaiRand-27K", help="为数据源指定一个名称。")
     parser.add_argument("--test_size", type=float, default=0.1, help="测试集所占的比例。")
     parser.add_argument("--seed", type=int, default=42, help="用于划分数据集的随机种子，确保可复现。")
@@ -16,6 +16,7 @@ def main():
     args = parser.parse_args()
 
     print("--- 开始处理 ---")
+    args.input_json = os.path.join('output_'+args.data_source_name, args.input_json)
     print(f"加载文本数据源: {args.input_json}")
 
     try:
@@ -45,6 +46,7 @@ def main():
             ground_truth_text = row.get("ground_truth", "")
 
             prompt_content = " ".join(text.split())
+            #print('prompt content', prompt_content)
             ground_truth = " ".join(ground_truth_text.split())
 
             processed_data = {
@@ -75,7 +77,7 @@ def main():
         processed_test_dataset = datasets.Dataset.from_list(test_data_list)
     else:
         processed_test_dataset = datasets.Dataset.from_list([])
-
+    args.output_dir = os.path.join(args.output_dir, args.data_source_name)
     os.makedirs(args.output_dir, exist_ok=True)
     train_output_path = os.path.join(args.output_dir, "train.parquet")
     test_output_path = os.path.join(args.output_dir, "test.parquet")
